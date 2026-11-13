@@ -135,3 +135,9 @@ ADR-004 still forbids speculative trading, ledger, and competition tables, and i
 **Status:** Required by the Module 03 specification. Open business questions were not closed.
 
 Module 03 stores confirmed challenge prices and rule numbers as versioned rows. Accounts keep the price version and rule-set version they were provisioned with. Pass, fail, expiry, and activation are rejected because OQ-001 through OQ-005 and the activation condition are unresolved. Purchase provisioning accepts evidence only from the M-08 contract and does not post a journal. Redis was not added. The implemented contract is [MODULE_03_CHALLENGE_ACCOUNTS.md](./MODULE_03_CHALLENGE_ACCOUNTS.md).
+
+## ADR-013 — In-process market data, fixture only
+
+**Status:** Required by the Module 04 specification. OQ-073 and OQ-074 stay open.
+
+Market data runs inside the API process because that process already holds the WebSocket connections. Redis and Kafka were not added. The only provider is a labeled test fixture. A vendor adapter that could set `liveMarketData` is not registered. The contract is [MODULE_04_MARKET_DATA.md](./MODULE_04_MARKET_DATA.md).

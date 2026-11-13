@@ -18,6 +18,9 @@ export const PERMISSIONS = {
   accountsRead: 'accounts.read',
   accountsTransition: 'accounts.transition',
   catalogueManage: 'catalogue.manage',
+  marketDataRead: 'market_data.read',
+  marketDataHealth: 'market_data.health',
+  marketDataManage: 'market_data.manage',
 } as const;
 
 export type AuthContext = {

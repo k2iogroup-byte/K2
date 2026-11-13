@@ -3,6 +3,7 @@ export type LogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
 export type DatabaseSslMode = 'disable' | 'no-verify' | 'verify';
 
 export type EmailDeliveryMode = 'capture' | 'unconfigured' | 'smtp';
+export type MarketDataMode = 'disconnected' | 'test-fixture';
 
 export type SmtpConfig = {
   host: string;
@@ -31,6 +32,7 @@ export type AppConfig = {
   loginDelayBaseMs: number;
   loginDelayCapMs: number;
   emailOutboxPath: string | null;
+  marketDataMode: MarketDataMode;
 };
 
 /** 32 bytes of 0x01. Development only. Rejected in staging and production. */
@@ -117,6 +119,7 @@ export function loadConfig(env: Env): AppConfig {
     emailDelivery === null
       ? null
       : readOutboxPath(env.EMAIL_OUTBOX_PATH, emailDelivery.mode, issues);
+  const marketDataMode = readMarketDataMode(env.MARKET_DATA_MODE, appEnv, issues);
 
   if (appEnv && database && databaseSsl) {
     checkDatabasePolicy(appEnv, database.url, databaseSsl, issues);
@@ -137,7 +140,8 @@ export function loadConfig(env: Env): AppConfig {
     !mfaEncryptionKey ||
     !emailDelivery ||
     !webOrigin ||
-    !loginDelay
+    !loginDelay ||
+    !marketDataMode
   ) {
     throw new ConfigError(issues.length > 0 ? issues : [{ path: 'config', message: 'is invalid' }]);
   }
@@ -160,7 +164,31 @@ export function loadConfig(env: Env): AppConfig {
     loginDelayBaseMs: loginDelay.baseMs,
     loginDelayCapMs: loginDelay.capMs,
     emailOutboxPath,
+    marketDataMode,
   };
+}
+
+function readMarketDataMode(
+  raw: string | undefined,
+  appEnv: AppEnv | null,
+  issues: ConfigIssue[],
+): MarketDataMode | null {
+  const value = raw === undefined || raw.trim() === '' ? 'disconnected' : raw.trim();
+  if (value !== 'disconnected' && value !== 'test-fixture') {
+    issues.push({
+      path: 'MARKET_DATA_MODE',
+      message: 'must be disconnected or test-fixture',
+    });
+    return null;
+  }
+  if (value === 'test-fixture' && appEnv !== 'development') {
+    issues.push({
+      path: 'MARKET_DATA_MODE',
+      message: 'test fixtures are rejected outside development',
+    });
+    return null;
+  }
+  return value;
 }
 
 function readEnum<T extends string>(

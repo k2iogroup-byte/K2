@@ -99,7 +99,7 @@ npm run db:status
 npm run db:migrate
 ```
 
-`npm run db:rollback` removes only the latest migration. After Module 03, the first rollback removes `0003`, the next removes `0002`, and the next removes `0001`. The bookkeeping table `schema_migrations` remains. `/health` still reports schema `0001` while `foundation_schema_info` is present, and 503 after that row is gone.
+`npm run db:rollback` removes only the latest migration. After Module 04, the first rollback removes `0004`, then `0003`, then `0002`, then `0001`. The bookkeeping table `schema_migrations` remains. `/health` still reports schema `0001` while `foundation_schema_info` is present, and 503 after that row is gone.
 
 ## Troubleshooting
 

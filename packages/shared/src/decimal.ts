@@ -30,6 +30,10 @@ export function decimalGreaterThan(left: string, right: string, scale: number): 
   return compareScaled(left, right, scale) > 0;
 }
 
+export function addDecimals(left: string, right: string, scale: number): string {
+  return formatScaled(scaledInteger(left, scale) + scaledInteger(right, scale), scale);
+}
+
 function compareScaled(left: string, right: string, scale: number): number {
   const a = scaledInteger(left, scale);
   const b = scaledInteger(right, scale);
@@ -42,4 +46,10 @@ function scaledInteger(value: string, scale: number): bigint {
   const canonical = canonicalDecimal(value, scale);
   const [whole, fraction = ''] = canonical.split('.');
   return BigInt(`${whole}${fraction}`);
+}
+
+function formatScaled(value: bigint, scale: number): string {
+  const digits = value.toString().padStart(scale + 1, '0');
+  if (scale === 0) return digits;
+  return `${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
 }

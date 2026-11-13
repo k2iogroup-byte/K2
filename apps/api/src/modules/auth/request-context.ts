@@ -31,8 +31,9 @@ export function requireCsrf(request: FastifyRequest, auth: AuthContext): void {
 export async function requireRead(
   service: AuthService,
   request: FastifyRequest,
+  querySchema: ZodType = emptyQuerySchema,
 ): Promise<AuthContext> {
-  parseWithSchema(emptyQuerySchema, request.query);
+  parseWithSchema(querySchema, request.query);
   const auth = await service.loadSession(readOpaqueCookie(request, SESSION_COOKIE));
   if (!auth) throw new AppError('AUTHENTICATION_FAILED', 401, 'Sign in is required');
   return auth;

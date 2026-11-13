@@ -5,6 +5,8 @@
 > **Module 02 (implemented):** authentication and user management are implemented without a `/v1` prefix and without refresh tokens. The contract, including paths and schemas, is [MODULE_02_AUTHENTICATION.md](./MODULE_02_AUTHENTICATION.md). The `/v1/auth/*` rows below remain PROPOSED and were not built.
 >
 > **Module 03 (implemented):** challenge catalogue, immutable rule-set versions, and account lifecycle are implemented without a `/v1` prefix. Checkout, metrics, and ledger routes below were not built. The contract is [MODULE_03_CHALLENGE_ACCOUNTS.md](./MODULE_03_CHALLENGE_ACCOUNTS.md).
+>
+> **Module 04 (implemented):** market-data normalisation, fixture feeds, bars, and feed health are implemented without a live vendor. The contract is [MODULE_04_MARKET_DATA.md](./MODULE_04_MARKET_DATA.md). The `/v1` rows below were not built.
 
 ---
 

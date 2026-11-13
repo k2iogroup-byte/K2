@@ -16,6 +16,11 @@ import { registerAuthRoutes } from './modules/auth/auth-routes.js';
 import { createEmailSender, type EmailSender } from './modules/auth/email.js';
 import type { MemoryRateLimiter } from './modules/auth/rate-limit.js';
 import { registerHealthRoutes } from './modules/health/health-route.js';
+import { MarketDataEngine } from './modules/market-data/engine.js';
+import { registerMarketDataRoutes } from './modules/market-data/market-data-routes.js';
+import { registerMarketDataSocket } from './modules/market-data/market-data-ws.js';
+import { createProvider } from './modules/market-data/provider.js';
+import { MarketDataStore } from './modules/market-data/store.js';
 
 const BODY_LIMIT_BYTES = 16 * 1024;
 
@@ -82,6 +87,28 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       sleep: options.sleep,
     });
     registerAccountRoutes(app, { auth, pool: options.pool });
+    const store = new MarketDataStore(options.pool);
+    const instruments = await store.listInstruments();
+    const provider = createProvider(options.config.marketDataMode);
+    const engine = new MarketDataEngine(
+      {
+        providerId: provider?.id ?? 'none',
+        priceOrigin: 'TEST_FIXTURE',
+        sink: store,
+      },
+      instruments,
+    );
+    if (provider) {
+      provider.start((event) => {
+        void engine.ingest(event).catch(() => {
+          app.log.error({ event: 'market_data_ingest_failed' }, 'market data ingest failed');
+        });
+      });
+    }
+    registerMarketDataRoutes({ app, auth, pool: options.pool, engine });
+    await registerWebSocket(app, options.config);
+    registerMarketDataSocket(app, options.config, auth, engine);
+    return app;
   }
   await registerWebSocket(app, options.config);
   return app;

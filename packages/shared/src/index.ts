@@ -71,6 +71,7 @@ export {
   verifiedResponseSchema,
 } from './auth.js';
 export {
+  addDecimals,
   canonicalDecimal,
   DecimalError,
   decimalGreaterThan,
@@ -81,5 +82,20 @@ export type { ApiErrorBody, ApiErrorCode, ApiErrorDetail } from './errors.js';
 export { API_ERROR_CODES, apiErrorSchema } from './errors.js';
 export type { DatabaseCheck, HealthResponse } from './health.js';
 export { databaseCheckSchema, healthResponseSchema } from './health.js';
+export type { BarTimeframe, FeedState, MarketCode, PriceOrigin, VenueCode } from './market-data.js';
+export {
+  BAR_TIMEFRAMES,
+  barListResponseSchema,
+  barSchema,
+  FEED_STATES,
+  feedHealthSchema,
+  instrumentRequestSchema,
+  instrumentResponseSchema,
+  marketDataClientMessageSchema,
+  MARKETS,
+  PRICE_ORIGINS,
+  quoteSnapshotSchema,
+  VENUES,
+} from './market-data.js';
 export type { WsClientMessage, WsServerMessage } from './messages.js';
 export { emptyQuerySchema, wsClientMessageSchema, wsServerMessageSchema } from './messages.js';

@@ -54,6 +54,7 @@
 - **Scope:** vendor adapters, normalisation, timestamps, staleness detection, fan-out, snapshot persistence, bars for charts.
 - **Depends on:** M-01; vendor licensing decisions (OQ-073, OQ-074).
 - **Notes:** no fabricated prices; explicit stale/disconnected status (CONFIRMED).
+- **Module 04 implementation status:** the adapter boundary, normalisation, timestamps, stale and disconnect handling, in-process fan-out, latest quotes, and OHLCV bars are implemented with a test fixture only. No live vendor is connected. See [MODULE_04_MARKET_DATA.md](./MODULE_04_MARKET_DATA.md). Not deployed.
 
 ### M-05 Trading Engine
 - **Scope (MVP):** order management, simulation fill model (spread, liquidity, slippage, partial fills, sessions — CONFIRMED), positions.

@@ -50,7 +50,7 @@ The health module depends on a `DatabaseProbe` interface. The PostgreSQL impleme
 
 ## What is intentionally absent
 
-Module 02 adds `apps/api/src/modules/auth`. Module 03 adds `apps/api/src/modules/accounts` for the challenge catalogue, rule-set versions, and account lifecycle. There is still no payments, trading, risk, or ledger module. There is no Redis client and no message broker. Module 01 database objects remain `schema_migrations` and `foundation_schema_info`. Module 02 adds the identity tables in migration `0002_identity_access`. Module 03 adds the catalogue and account tables in migration `0003_challenge_accounts`. Account SQL lives in the account module so `infrastructure/db` does not own challenge rules.
+Module 02 adds `apps/api/src/modules/auth`. Module 03 adds `apps/api/src/modules/accounts` for the challenge catalogue, rule-set versions, and account lifecycle. Module 04 adds `apps/api/src/modules/market-data` for normalised quotes, bars, and feed health. There is still no payments, trading, risk, or ledger module. There is no Redis client and no message broker. Module 01 database objects remain `schema_migrations` and `foundation_schema_info`. Module 02 adds the identity tables in migration `0002_identity_access`. Module 03 adds the catalogue and account tables in migration `0003_challenge_accounts`. Module 04 adds market-data tables in migration `0004_market_data`. Account and market-data SQL live in their modules so `infrastructure/db` does not own those rules.
 
 ## Naming
 
