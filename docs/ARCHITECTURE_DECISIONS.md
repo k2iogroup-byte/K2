@@ -129,3 +129,9 @@ Staff SSO is not implemented. MFA for staff is TOTP, encrypted at rest, and requ
 ## ADR-004 note after Module 02
 
 ADR-004 still forbids speculative trading, ledger, and competition tables, and it still defers Redis. Module 02 added only the identity tables in migration `0002_identity_access`.
+
+## ADR-012 — Challenge catalogue without a ledger
+
+**Status:** Required by the Module 03 specification. Open business questions were not closed.
+
+Module 03 stores confirmed challenge prices and rule numbers as versioned rows. Accounts keep the price version and rule-set version they were provisioned with. Pass, fail, expiry, and activation are rejected because OQ-001 through OQ-005 and the activation condition are unresolved. Purchase provisioning accepts evidence only from the M-08 contract and does not post a journal. Redis was not added. The implemented contract is [MODULE_03_CHALLENGE_ACCOUNTS.md](./MODULE_03_CHALLENGE_ACCOUNTS.md).

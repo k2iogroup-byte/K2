@@ -5,6 +5,8 @@
 > **Module 01** added `schema_migrations` and `foundation_schema_info`.
 >
 > **Module 02 (implemented):** migration `0002_identity_access` creates `users`, `credentials`, `roles`, `permissions`, `role_permissions`, `user_roles`, `sessions`, `email_verification_tokens`, `password_reset_tokens`, `mfa_factors`, `mfa_recovery_codes`, `staff_invitations`, and append-only `authentication_audit_events`. Account status is `ACTIVE`, `SUSPENDED`, or `CLOSED`. Email verification is `email_verified_at`, not a status. The proposed `PENDING` status and `country_of_residence` were not created. Tokens and recovery codes are hashes. TOTP secrets are ciphertext. See [MODULE_02_AUTHENTICATION.md](./MODULE_02_AUTHENTICATION.md). The rest of this document remains a proposed logical model.
+>
+> **Module 03 (implemented):** migration `0003_challenge_accounts` creates `challenge_products`, `product_price_versions`, `product_activation_events`, `rule_sets`, `rule_set_versions`, `rule_parameters`, `purchase_evidence_references`, `trading_accounts`, `account_state_transitions`, `challenge_audit_events`, and `catalogue_commands`. It does not create a ledger, a subscription, or market-data tables. `market_scope`, `parent_account_id`, and `first_trade_at` were not added. See [MODULE_03_CHALLENGE_ACCOUNTS.md](./MODULE_03_CHALLENGE_ACCOUNTS.md).
 
 ---
 

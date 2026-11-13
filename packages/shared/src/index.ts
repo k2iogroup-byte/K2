@@ -1,4 +1,29 @@
 export type {
+  AccountLifecycleState,
+  ChallengeProduct,
+  StaffTransitionReason,
+  TradingAccount,
+} from './accounts.js';
+export {
+  ACCOUNT_LIFECYCLE_STATES,
+  accountHistoryResponseSchema,
+  accountListResponseSchema,
+  activationRequestSchema,
+  catalogueResponseSchema,
+  challengeProductSchema,
+  createProductRequestSchema,
+  priceVersionRequestSchema,
+  publishRuleSetRequestSchema,
+  RULE_PARAMETER_STATUSES,
+  RULE_STAGES,
+  ruleSetResponseSchema,
+  STAFF_TRANSITION_REASON_CODES,
+  staffCatalogueResponseSchema,
+  staffTransitionRequestSchema,
+  tradingAccountSchema,
+  transitionResultSchema,
+} from './accounts.js';
+export type {
   AccountStatus,
   AuthMeResponse,
   ProfileResponse,
@@ -45,6 +70,13 @@ export {
   tokenRequestSchema,
   verifiedResponseSchema,
 } from './auth.js';
+export {
+  canonicalDecimal,
+  DecimalError,
+  decimalGreaterThan,
+  decimalLessThan,
+  decimalsEqual,
+} from './decimal.js';
 export type { ApiErrorBody, ApiErrorCode, ApiErrorDetail } from './errors.js';
 export { API_ERROR_CODES, apiErrorSchema } from './errors.js';
 export type { DatabaseCheck, HealthResponse } from './health.js';

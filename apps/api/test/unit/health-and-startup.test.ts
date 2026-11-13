@@ -148,7 +148,7 @@ describe('websocket infrastructure', () => {
 describe('migration files', () => {
   it('loads the foundation pair and rejects a one-sided migration', () => {
     const migrations = loadMigrations(migrationsDirectory());
-    expect(migrations.map((migration) => migration.version)).toEqual(['0001', '0002']);
+    expect(migrations.map((migration) => migration.version)).toEqual(['0001', '0002', '0003']);
     const dir = mkdtempSync(path.join(tmpdir(), 'k2-mig-'));
     writeFileSync(path.join(dir, '0001_only.up.sql'), 'SELECT 1;');
     expect(() => loadMigrations(dir)).toThrow(/missing an up or down file/);

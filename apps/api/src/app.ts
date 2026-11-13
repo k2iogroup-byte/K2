@@ -11,6 +11,7 @@ import { isAllowedOrigin } from './infrastructure/http/origin.js';
 import { resolveRequestId } from './infrastructure/http/request-id.js';
 import { loggerOptions } from './infrastructure/logging/logger.js';
 import { registerWebSocket } from './infrastructure/ws/ws-route.js';
+import { registerAccountRoutes } from './modules/accounts/account-routes.js';
 import { registerAuthRoutes } from './modules/auth/auth-routes.js';
 import { createEmailSender, type EmailSender } from './modules/auth/email.js';
 import type { MemoryRateLimiter } from './modules/auth/rate-limit.js';
@@ -73,13 +74,14 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   installErrorHandling(app);
   registerHealthRoutes(app, { config: options.config, database: options.database });
   if (options.pool) {
-    registerAuthRoutes(app, {
+    const auth = registerAuthRoutes(app, {
       config: options.config,
       pool: options.pool,
       emailSender: options.emailSender ?? createEmailSender(options.config),
       limiter: options.limiter,
       sleep: options.sleep,
     });
+    registerAccountRoutes(app, { auth, pool: options.pool });
   }
   await registerWebSocket(app, options.config);
   return app;

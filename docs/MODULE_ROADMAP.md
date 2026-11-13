@@ -48,6 +48,7 @@
 - **Scope:** product catalogue (five CONFIRMED sizes/prices), rule-set versioning, account provisioning, lifecycle Stage 1 → Stage 2 → Funded Simulation, expiry, failure.
 - **Depends on:** M-02, M-07, M-08.
 - **Blocking questions:** OQ-001…OQ-005, OQ-020.
+- **Module 03 implementation status:** the five confirmed products, immutable price and rule-set versions, M-08 purchase-evidence provisioning, and administrative lifecycle transitions are implemented. Pass, fail, expiry, activation, Stage 2, Funded Simulation, payments, and the ledger are not. See [MODULE_03_CHALLENGE_ACCOUNTS.md](./MODULE_03_CHALLENGE_ACCOUNTS.md). Not deployed.
 
 ### M-04 Market Data Infrastructure
 - **Scope:** vendor adapters, normalisation, timestamps, staleness detection, fan-out, snapshot persistence, bars for charts.

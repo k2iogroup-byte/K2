@@ -15,6 +15,9 @@ export const PERMISSIONS = {
   staffStatusChange: 'staff.status.change',
   staffMfaReset: 'staff.mfa.reset',
   auditRead: 'audit.read',
+  accountsRead: 'accounts.read',
+  accountsTransition: 'accounts.transition',
+  catalogueManage: 'catalogue.manage',
 } as const;
 
 export type AuthContext = {

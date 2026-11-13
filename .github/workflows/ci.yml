@@ -6,6 +6,7 @@ on:
     branches:
       - module-01-project-foundation
       - module-02-auth
+      - module-03-challenge-accounts
       - ci-run-on-main
       - main
 

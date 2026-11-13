@@ -1,8 +1,10 @@
 # K2 Group — API Specification (PROPOSED)
 
-> **Status of this entire document: PROPOSED**, except the Module 02 note below. The tables in this file are still a recommended future surface. They are not the implemented contract.
+> **Status of this entire document: PROPOSED**, except the implementation notes below. The tables in this file are still a recommended future surface. They are not the implemented contract.
 >
 > **Module 02 (implemented):** authentication and user management are implemented without a `/v1` prefix and without refresh tokens. The contract, including paths and schemas, is [MODULE_02_AUTHENTICATION.md](./MODULE_02_AUTHENTICATION.md). The `/v1/auth/*` rows below remain PROPOSED and were not built.
+>
+> **Module 03 (implemented):** challenge catalogue, immutable rule-set versions, and account lifecycle are implemented without a `/v1` prefix. Checkout, metrics, and ledger routes below were not built. The contract is [MODULE_03_CHALLENGE_ACCOUNTS.md](./MODULE_03_CHALLENGE_ACCOUNTS.md).
 
 ---
 

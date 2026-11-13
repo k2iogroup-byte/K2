@@ -14,6 +14,8 @@ export const API_ERROR_CODES = [
   'CONFLICT',
   'EMAIL_DELIVERY_UNAVAILABLE',
   'CSRF_FAILED',
+  'UNRESOLVED_RULE',
+  'DEPENDENCY_UNAVAILABLE',
 ] as const;
 
 export const apiErrorDetailSchema = z.strictObject({
