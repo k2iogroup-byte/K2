@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - module-01-project-foundation
+      - ci-run-on-main
+      - main
 
 permissions:
   contents: read
