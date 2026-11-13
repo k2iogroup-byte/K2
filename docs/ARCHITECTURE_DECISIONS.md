@@ -120,7 +120,7 @@ Authentication is an opaque session row in PostgreSQL. The cookie holds the toke
 
 The browser talks to `/k2-api` on the Next.js origin. That route proxies to the API, so the session cookie is first-party and `SameSite=Lax`. `Secure` is set outside development. CSRF uses `x-k2-request` plus a session-bound `k2_csrf` cookie. CORS remains an explicit origin list and now allows the authentication methods.
 
-Authentication rate limits are PostgreSQL rows keyed by `request.ip`. `TRUST_PROXY` defaults to off, accepts a hop count of 1 to 5 or a CIDR list, and rejects `true`. The staging Railway file sets `1`. See [DEPLOYMENT_ARCHITECTURE.md](./DEPLOYMENT_ARCHITECTURE.md). The in-memory limiter remains a test double. Redis was not added.
+Authentication rate limits are PostgreSQL rows keyed by the normalized client address from `request.ip`. `TRUST_PROXY` defaults to off, accepts a hop count of 1 to 5 or a CIDR list, and rejects `true`. The staging Railway file sets `1`. Railway's actual proxy chain has not been observed from this repository. Expired rows are deleted in bounded batches. See [DEPLOYMENT_ARCHITECTURE.md](./DEPLOYMENT_ARCHITECTURE.md). The in-memory limiter remains a test double. Redis was not added.
 
 Argon2id parameters, session lifetimes, and the permission grants are engineering defaults recorded in [MODULE_02_AUTHENTICATION.md](./MODULE_02_AUTHENTICATION.md). They are not new founder business rules.
 

@@ -195,7 +195,7 @@ export class MarketDataEngine {
 
   subscribe(listener: (event: DistributionEvent) => void): () => void {
     this.listeners.add(listener);
-    listener({ type: 'feed', health: this.health() });
+    this.emit({ type: 'feed', health: this.health() });
     return () => {
       this.listeners.delete(listener);
     };
@@ -456,7 +456,13 @@ export class MarketDataEngine {
   }
 
   private emit(event: DistributionEvent): void {
-    for (const listener of this.listeners) listener(event);
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch {
+        // One consumer must not stop delivery to the others.
+      }
+    }
   }
 
   private now(): Date {

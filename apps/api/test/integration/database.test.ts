@@ -6,11 +6,15 @@ import path from 'node:path';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { loadConfig } from '../../src/config/env.js';
 import { loadEnvFile } from '../../src/config/load-env-file.js';
 import { apiPackageRoot, resolveEnvFile } from '../../src/config/paths.js';
 import { migrateDown, migrateUp, migrationStatus } from '../../src/infrastructure/db/migrator.js';
+import { PgDatabaseProbe } from '../../src/infrastructure/db/probe.js';
+import { createLogger } from '../../src/infrastructure/logging/logger.js';
 import { startServer } from '../../src/server.js';
 import { startWorker } from '../../src/worker.js';
+import { validEnv } from '../valid-env.js';
 
 const envFile = resolveEnvFile();
 if (envFile) loadEnvFile(envFile);
@@ -159,4 +163,103 @@ describe('database connectivity and migrations', () => {
     expect(result.stdout).toContain('0001');
     expect(`${result.stdout}${result.stderr}`).not.toContain(password);
   });
+
+  it('fails readiness for a missing migration, a bad checksum, a wrong marker, or a dead database', async () => {
+    await resetPublicSchema();
+    const directory = path.join(apiPackageRoot(), 'db', 'migrations');
+    expect(await migrateUp(pool, directory)).toEqual(['0001', '0002', '0003', '0004', '0005']);
+    expect(await migrateUp(pool, directory)).toEqual([]);
+
+    const healthy = await listen();
+    expect(healthy.status).toBe(200);
+    expect(healthy.body).toMatchObject({
+      status: 'ok',
+      checks: { database: { status: 'up', schemaVersion: '0001' } },
+    });
+
+    const removed = await pool.query<{ version: string; name: string; checksum: string }>(
+      `DELETE FROM schema_migrations WHERE version = '0005' RETURNING version, name, checksum`,
+    );
+    const removedRow = removed.rows[0];
+    if (!removedRow) throw new Error('deleted migration row was not returned');
+    expect(removedRow.version).toBe('0005');
+    const missing = await listen();
+    expect(missing.status).toBe(503);
+    expect(missing.body).toMatchObject({
+      status: 'degraded',
+      checks: { database: { status: 'up', schemaVersion: '0001' } },
+    });
+    await pool.query(
+      `INSERT INTO schema_migrations (version, name, checksum) VALUES ($1, $2, $3)`,
+      [removedRow.version, removedRow.name, removedRow.checksum],
+    );
+
+    const original = await pool.query<{ checksum: string }>(
+      `SELECT checksum FROM schema_migrations WHERE version = '0004'`,
+    );
+    await pool.query(`UPDATE schema_migrations SET checksum = $1 WHERE version = '0004'`, [
+      'ab'.repeat(32),
+    ]);
+    const tampered = await listen();
+    expect(tampered.status).toBe(503);
+    expect(tampered.body).toMatchObject({
+      checks: { database: { status: 'up', schemaVersion: '0001' } },
+    });
+    await pool.query(`UPDATE schema_migrations SET checksum = $1 WHERE version = '0004'`, [
+      original.rows[0]?.checksum,
+    ]);
+
+    await pool.query(`UPDATE foundation_schema_info SET schema_version = '9999' WHERE id = 1`);
+    const wrongMarker = await listen();
+    expect(wrongMarker.status).toBe(503);
+    expect(wrongMarker.body).toMatchObject({
+      status: 'degraded',
+      checks: { database: { status: 'up', schemaVersion: '9999' } },
+    });
+    await pool.query(`UPDATE foundation_schema_info SET schema_version = '0001' WHERE id = 1`);
+    const restored = await listen();
+    expect(restored.status).toBe(200);
+
+    const badUrl = new URL(databaseUrl);
+    badUrl.port = '1';
+    const badPool = new pg.Pool({
+      connectionString: badUrl.toString(),
+      connectionTimeoutMillis: 1_000,
+      max: 1,
+    });
+    const discarded: string[] = [];
+    const down = await new PgDatabaseProbe(
+      badPool,
+      createLogger(loadConfig(validEnv()), {
+        write(chunk: string) {
+          discarded.push(chunk);
+        },
+      }),
+    ).check();
+    expect(down.reachable).toBe(false);
+    expect(down.migrated).toBe(false);
+    expect(discarded.join('')).not.toContain(password);
+    await badPool.end();
+  });
 });
+
+async function listen(): Promise<{ status: number; body: unknown }> {
+  const runtime = await startServer(
+    validEnv({ DATABASE_URL: databaseUrl, PORT: '0', HOST: '127.0.0.1' }),
+    {
+      logStream: {
+        write() {
+          /* discard */
+        },
+      },
+    },
+  );
+  try {
+    const address = runtime.app.server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    const response = await fetch(`http://127.0.0.1:${port}/health`);
+    return { status: response.status, body: await response.json() };
+  } finally {
+    await runtime.app.close();
+  }
+}

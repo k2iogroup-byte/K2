@@ -95,7 +95,7 @@ These are not founder business rules. They are the security parameters used beca
 4. Cookies: HttpOnly session, `Secure` outside development, `SameSite=Lax`, `Path=/`.
 5. CSRF header plus a session-bound double-submit token.
 6. CORS stays on the configured origin list, with credentials, and now allows `GET`, `POST`, `PATCH`, `DELETE`, and `OPTIONS`. `*` is still rejected.
-7. Production rate limits are rows in PostgreSQL, locked per key. They are shared by API processes that use the same database and survive a process restart. Redis was not added. Tests may still inject the in-memory limiter. Multi-instance deployment is not blocked by process-local limits. A scheduled purge of untouched keys is not implemented.
+7. Production rate limits are rows in PostgreSQL, locked per key. They are shared by API processes that use the same database and survive a process restart. Redis was not added. Tests may still inject the in-memory limiter. Expired bucket rows, and failure rows older than the longest authentication window, are deleted in a bounded batch. A process tries that batch at most once a minute, takes an advisory lock so a second process skips it, and does not delete a window that is still open. Multi-instance deployment is not blocked by process-local limits.
 8. Login and reset responses do not reveal whether an email exists. A correct password on a suspended or closed account returns one message for both statuses.
 9. Login replaces any presented session. A revoked or expired hash cannot be reused.
 10. Authorization is loaded from PostgreSQL on each request. Object checks: session revoke and profile updates are limited to the signed-in user. A missing or foreign session id is HTTP 404.

@@ -228,7 +228,9 @@ describe('module 04 market data', () => {
       messages.some((message) => message.type === 'quote' && message.symbol === 'BTC-USDT'),
     ).toBe(true);
     const closed = await new Promise<number>((resolve) => {
-      const socket = new WebSocket(wsUrl);
+      const socket = new WebSocket(wsUrl, {
+        headers: { origin: 'http://127.0.0.1:3000' },
+      });
       socket.once('close', (code) => {
         resolve(code);
       });
@@ -238,6 +240,7 @@ describe('module 04 market data', () => {
     expect((await call(unverified.jar, '/market-data/quotes/TEST')).status).toBe(403);
     const unverifiedSocket = new WebSocket(wsUrl, {
       headers: {
+        origin: 'http://127.0.0.1:3000',
         cookie: [...unverified.jar.entries()].map(([name, value]) => `${name}=${value}`).join('; '),
       },
     });
@@ -255,7 +258,9 @@ async function socketMessages(
   afterOpen: () => Promise<void>,
 ): Promise<{ type?: string; symbol?: string; liveMarketData?: boolean }[]> {
   const cookie = [...jar.entries()].map(([name, value]) => `${name}=${value}`).join('; ');
-  const socket = new WebSocket(wsUrl, { headers: { cookie } });
+  const socket = new WebSocket(wsUrl, {
+    headers: { cookie, origin: 'http://127.0.0.1:3000' },
+  });
   const received: { type?: string; symbol?: string; liveMarketData?: boolean }[] = [];
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {

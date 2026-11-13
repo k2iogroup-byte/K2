@@ -3,7 +3,8 @@ declare module 'ws' {
     constructor(url: string, options?: { headers?: Record<string, string> });
     on(event: 'message', listener: (data: Buffer) => void): void;
     on(event: 'open' | 'error', listener: () => void): void;
-    once(event: 'close', listener: (code: number) => void): void;
+    once(event: 'open' | 'error', listener: () => void): void;
+    once(event: 'close', listener: (code: number, reason: Buffer) => void): void;
     send(data: string): void;
     close(): void;
   }

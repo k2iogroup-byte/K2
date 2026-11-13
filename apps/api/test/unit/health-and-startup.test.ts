@@ -3,12 +3,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
+import WebSocket from 'ws';
 
 import { buildApp } from '../../src/app.js';
 import { ConfigError, loadConfig } from '../../src/config/env.js';
 import { migrationsDirectory } from '../../src/config/paths.js';
 import { loadMigrations } from '../../src/infrastructure/db/migrator.js';
 import type { DatabaseProbe } from '../../src/infrastructure/db/probe.js';
+import { migrationsAreReady } from '../../src/infrastructure/db/probe.js';
 import { startServer } from '../../src/server.js';
 import { validEnv } from '../valid-env.js';
 
@@ -113,24 +115,26 @@ describe('websocket infrastructure', () => {
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address();
     const port = typeof address === 'object' && address !== null ? address.port : 0;
-    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      headers: { origin: 'http://127.0.0.1:3000' },
+    });
     const messages = await new Promise<string[]>((resolve, reject) => {
       const received: string[] = [];
       const timer = setTimeout(() => {
         reject(new Error('websocket timed out'));
       }, 5_000);
-      socket.addEventListener('message', (event) => {
-        received.push(String(event.data));
+      socket.on('message', (data) => {
+        received.push(String(data));
         if (received.length === 2) {
           clearTimeout(timer);
           resolve(received);
         }
       });
-      socket.addEventListener('error', () => {
+      socket.on('error', () => {
         clearTimeout(timer);
         reject(new Error('websocket failed'));
       });
-      socket.addEventListener('open', () => {
+      socket.on('open', () => {
         socket.send(JSON.stringify({ type: 'ping' }));
         socket.send(JSON.stringify({ type: 'subscribe', symbol: 'AAPL' }));
       });
@@ -142,6 +146,75 @@ describe('websocket infrastructure', () => {
     });
     socket.close();
     await app.close();
+  });
+
+  it('rejects a websocket handshake that omits Origin', async () => {
+    const config = loadConfig(validEnv());
+    const app = await buildApp({ config, database: probe(), logger: false });
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address();
+    const port = typeof address === 'object' && address !== null ? address.port : 0;
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    const closed = await new Promise<{ code: number; reason: string }>((resolve) => {
+      socket.once('close', (code, reason) => {
+        resolve({ code, reason: String(reason) });
+      });
+    });
+    expect(closed).toEqual({ code: 1008, reason: 'origin required' });
+    await app.close();
+  });
+});
+
+describe('migration readiness', () => {
+  const required = [
+    { version: '0001', checksum: 'a' },
+    { version: '0002', checksum: 'b' },
+  ];
+
+  it('accepts an exact checksum match and rejects holes, extras, and a wrong marker', () => {
+    expect(
+      migrationsAreReady(
+        '0001',
+        [
+          { version: '0001', checksum: 'a' },
+          { version: '0002', checksum: 'b' },
+        ],
+        required,
+      ),
+    ).toBe(true);
+    expect(migrationsAreReady('0001', [{ version: '0001', checksum: 'a' }], required)).toBe(false);
+    expect(
+      migrationsAreReady(
+        '0001',
+        [
+          { version: '0001', checksum: 'a' },
+          { version: '0002', checksum: 'changed' },
+        ],
+        required,
+      ),
+    ).toBe(false);
+    expect(
+      migrationsAreReady(
+        '0001',
+        [
+          { version: '0001', checksum: 'a' },
+          { version: '0002', checksum: 'b' },
+          { version: '0003', checksum: 'c' },
+        ],
+        required,
+      ),
+    ).toBe(false);
+    expect(
+      migrationsAreReady(
+        '9999',
+        [
+          { version: '0001', checksum: 'a' },
+          { version: '0002', checksum: 'b' },
+        ],
+        required,
+      ),
+    ).toBe(false);
+    expect(migrationsAreReady('0001', required, [])).toBe(false);
   });
 });
 

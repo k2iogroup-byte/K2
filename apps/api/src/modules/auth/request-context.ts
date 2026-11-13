@@ -2,6 +2,7 @@ import { emptyQuerySchema } from '@k2/shared';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodType } from 'zod';
 
+import { normalizeClientIp } from '../../infrastructure/http/client-ip.js';
 import { AppError } from '../../infrastructure/http/errors.js';
 import { parseWithSchema } from '../../infrastructure/http/validation.js';
 import type { RequestMeta } from './auth-service.js';
@@ -49,12 +50,19 @@ export async function requireWrite(
 }
 
 export function requestMeta(request: FastifyRequest): RequestMeta {
-  const ip = request.ip.trim();
   const agent = request.headers['user-agent'];
   return {
-    ip: ip === '' ? null : ip.slice(0, 64),
+    ip: clientAddress(request),
     userAgent: typeof agent === 'string' ? agent : null,
   };
+}
+
+function clientAddress(request: FastifyRequest): string | null {
+  try {
+    return normalizeClientIp(request.ip);
+  } catch {
+    return null;
+  }
 }
 
 export function noStore(reply: FastifyReply): void {

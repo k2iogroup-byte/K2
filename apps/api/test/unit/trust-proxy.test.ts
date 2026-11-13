@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { loadConfig } from '../../src/config/env.js';
 import type { DatabaseProbe } from '../../src/infrastructure/db/probe.js';
+import { requestMeta } from '../../src/modules/auth/request-context.js';
 import { validEnv } from '../valid-env.js';
 
 function probe(): DatabaseProbe {
@@ -66,5 +67,61 @@ describe('TRUST_PROXY client address', () => {
     await expect(clientIp('10.0.0.0/8', '10.0.0.8', '1.2.3.4, 203.0.113.9')).resolves.toBe(
       '203.0.113.9',
     );
+  });
+
+  it('ignores a forged header on a direct connection, including IPv6', async () => {
+    await expect(clientIp('false', '192.0.2.8', '203.0.113.9, 198.51.100.4')).resolves.toBe(
+      '192.0.2.8',
+    );
+    await expect(clientIp(undefined, 'fd00::1', '2001:db8::9')).resolves.toBe('fd00::1');
+    await expect(clientIp('0', '2001:db8::1', '2001:db8::9')).resolves.toBe('2001:db8::1');
+  });
+
+  it('reads IPv4 and IPv6 clients behind one trusted hop or CIDR', async () => {
+    await expect(clientIp('1', 'fd00::1', '2001:db8::10')).resolves.toBe('2001:db8::10');
+    await expect(clientIp('1', '10.0.0.8', '1.2.3.4,, 203.0.113.9')).resolves.toBe('203.0.113.9');
+    await expect(clientIp('fd00::/8', 'fd00::8', '2001:db8::10')).resolves.toBe('2001:db8::10');
+    await expect(clientIp('fd00::/8', '2001:db8::8', '198.51.100.9')).resolves.toBe('2001:db8::8');
+  });
+
+  it('keeps the peer address when the forwarding header is missing or blank', async () => {
+    await expect(clientIp('1', '192.0.2.15', '')).resolves.toBe('192.0.2.15');
+    await expect(clientIp('1', '192.0.2.15', '   ')).resolves.toBe('192.0.2.15');
+    await expect(clientIp('10.0.0.0/8', '10.0.0.8')).resolves.toBe('10.0.0.8');
+  });
+
+  it('separates two clients behind one proxy and drops a non-IP from the rate-limit key', async () => {
+    const config = loadConfig(validEnv({ TRUST_PROXY: '1' }));
+    const app = await buildApp({ config, database: probe(), logger: false });
+    app.get('/meta', (request) => requestMeta(request));
+    const left = await app.inject({
+      method: 'GET',
+      url: '/meta',
+      remoteAddress: '10.0.0.8',
+      headers: { 'x-forwarded-for': '203.0.113.10' },
+    });
+    const right = await app.inject({
+      method: 'GET',
+      url: '/meta',
+      remoteAddress: '10.0.0.8',
+      headers: { 'x-forwarded-for': '198.51.100.4, 203.0.113.11' },
+    });
+    const mapped = await app.inject({
+      method: 'GET',
+      url: '/meta',
+      remoteAddress: '10.0.0.8',
+      headers: { 'x-forwarded-for': '::ffff:203.0.113.20' },
+    });
+    const garbage = await app.inject({
+      method: 'GET',
+      url: '/meta',
+      remoteAddress: '10.0.0.8',
+      headers: { 'x-forwarded-for': 'not-an-ip' },
+    });
+    await app.close();
+    expect(left.json()).toMatchObject({ ip: '203.0.113.10' });
+    expect(right.json()).toMatchObject({ ip: '203.0.113.11' });
+    expect(mapped.json()).toMatchObject({ ip: '203.0.113.20' });
+    expect(garbage.json()).toMatchObject({ ip: null });
   });
 });

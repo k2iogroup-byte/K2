@@ -368,6 +368,23 @@ describe('market data engine', () => {
     }).toMatchObject({ subscribers: 32, events: 1_000, errors: 0 });
   });
 
+  it('keeps delivering when one consumer throws', async () => {
+    const engine = new MarketDataEngine(
+      { providerId: 'test-fixture', priceOrigin: 'TEST_FIXTURE' },
+      [equity],
+    );
+    engine.subscribe(() => {
+      throw new Error('consumer failed');
+    });
+    const seen: string[] = [];
+    engine.subscribe((event) => {
+      if (event.type === 'quote') seen.push(event.quote.symbol);
+    });
+    const received = new Date('2026-11-13T15:00:00.000Z');
+    expect((await engine.ingest(quote(1), received)).status).toBe('accepted');
+    expect(seen).toEqual(['TEST']);
+  });
+
   it('keeps the fixture provider off the network', () => {
     expect(createProvider('disconnected')).toBeNull();
     const provider = createProvider('test-fixture');

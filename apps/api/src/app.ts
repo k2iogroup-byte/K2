@@ -10,6 +10,7 @@ import { installErrorHandling } from './infrastructure/http/errors.js';
 import { isAllowedOrigin } from './infrastructure/http/origin.js';
 import { resolveRequestId } from './infrastructure/http/request-id.js';
 import { loggerOptions } from './infrastructure/logging/logger.js';
+import { ConnectionLimiter } from './infrastructure/ws/connection-limits.js';
 import { registerWebSocket } from './infrastructure/ws/ws-route.js';
 import { registerAccountRoutes } from './modules/accounts/account-routes.js';
 import { registerAuthRoutes } from './modules/auth/auth-routes.js';
@@ -32,9 +33,11 @@ export type BuildAppOptions = {
   limiter?: RateLimiter;
   sleep?: (ms: number) => Promise<void>;
   logger?: FastifyServerOptions['logger'];
+  connections?: ConnectionLimiter;
 };
 
 export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
+  const connections = options.connections ?? new ConnectionLimiter();
   const app = Fastify({
     logger: options.logger === undefined ? loggerOptions(options.config) : options.logger,
     bodyLimit: BODY_LIMIT_BYTES,
@@ -106,11 +109,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       });
     }
     registerMarketDataRoutes({ app, auth, pool: options.pool, engine });
-    await registerWebSocket(app, options.config);
-    registerMarketDataSocket(app, options.config, auth, engine);
+    await registerWebSocket(app, options.config, connections);
+    registerMarketDataSocket(app, options.config, auth, engine, connections);
     return app;
   }
-  await registerWebSocket(app, options.config);
+  await registerWebSocket(app, options.config, connections);
   return app;
 }
 

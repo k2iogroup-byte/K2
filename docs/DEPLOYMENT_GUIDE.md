@@ -59,7 +59,7 @@ Market-data licences, a broker, and a payment processor are not staging costs fo
 
 7. The API build command is `npm run build -w @k2/shared && npm run build -w @k2/api`. The pre-deploy command is `npm run db:migrate -w @k2/api`. The start command is `npm run start -w @k2/api`. Health check path: `/health`, timeout 120 seconds.
 8. Private `DATABASE_URL` is wired from the Postgres service. `DATABASE_SSL=disable` matches that private host. Do not replace it with the public proxy URL unless you also set `DATABASE_SSL` to `no-verify` or `verify`.
-9. After the deploy is healthy, open `https://<railway-domain>/health`. Expect HTTP 200, `"status":"ok"`, `"environment":"staging"`, and `"schemaVersion":"0001"`. Then open the Vercel URL and confirm the page shows **Operational** and schema `0001`.
+9. After the deploy is healthy, open `https://<railway-domain>/health`. Expect HTTP 200, `"status":"ok"`, `"environment":"staging"`, and `"schemaVersion":"0001"`. HTTP 200 also means `schema_migrations` matches the migration files in that release. The marker stays `0001` because later migrations do not change it. Then open the Vercel URL and confirm the page shows **Operational** and schema `0001`. This step is an owner action. It was not run for the correction that added the migration check.
 
 The worker is not a Railway service. It would cost money while idle and has no jobs.
 

@@ -2,22 +2,46 @@ import type pg from 'pg';
 
 import type { RateDecision, RateLimiter } from './rate-limit.js';
 
+/** Longest authentication window (registration, resend, forgot). Failures inside it stay. */
+const DEFAULT_FAILURE_RETENTION_MS = 60 * 60 * 1000;
+const DEFAULT_CLEANUP_INTERVAL_MS = 60_000;
+const DEFAULT_CLEANUP_BATCH = 100;
+/** Stable lock id so two API processes do not clean the same rows at once. */
+const CLEANUP_LOCK_KEY = 8_720_211;
+
+export type RateLimitCleanupOptions = {
+  cleanupIntervalMs?: number;
+  cleanupBatchSize?: number;
+};
+
+export type CleanupResult = {
+  buckets: number;
+  failures: number;
+};
+
 export class PostgresRateLimiter implements RateLimiter {
-  constructor(private readonly pool: pg.Pool) {}
+  private readonly cleanupIntervalMs: number;
+  private readonly cleanupBatchSize: number;
+  private failureRetentionMs = DEFAULT_FAILURE_RETENTION_MS;
+  private lastCleanupAt = 0;
+
+  constructor(
+    private readonly pool: pg.Pool,
+    options: RateLimitCleanupOptions = {},
+  ) {
+    this.cleanupIntervalMs = options.cleanupIntervalMs ?? DEFAULT_CLEANUP_INTERVAL_MS;
+    this.cleanupBatchSize = options.cleanupBatchSize ?? DEFAULT_CLEANUP_BATCH;
+  }
 
   async consume(key: string, limit: number, windowMs: number): Promise<RateDecision> {
+    this.scheduleCleanup();
     return this.transaction(async (client) => {
-      await client.query(
+      const locked = await client.query<{ hit_count: number; reset_at: Date }>(
         `INSERT INTO rate_limit_buckets (bucket_key, hit_count, reset_at)
          VALUES ($1, 0, clock_timestamp())
-         ON CONFLICT (bucket_key) DO NOTHING`,
-        [key],
-      );
-      const locked = await client.query<{ hit_count: number; reset_at: Date }>(
-        `SELECT hit_count, reset_at
-         FROM rate_limit_buckets
-         WHERE bucket_key = $1
-         FOR UPDATE`,
+         ON CONFLICT (bucket_key) DO UPDATE
+           SET hit_count = rate_limit_buckets.hit_count
+         RETURNING hit_count, reset_at`,
         [key],
       );
       const row = locked.rows[0];
@@ -54,6 +78,7 @@ export class PostgresRateLimiter implements RateLimiter {
   }
 
   async failureCount(key: string, windowMs: number): Promise<number> {
+    this.noteFailureWindow(windowMs);
     const result = await this.pool.query<{ count: number }>(
       `SELECT count(*)::int AS count
        FROM rate_limit_failures
@@ -65,6 +90,7 @@ export class PostgresRateLimiter implements RateLimiter {
   }
 
   async recordFailure(key: string, windowMs: number): Promise<number> {
+    this.noteFailureWindow(windowMs);
     return this.transaction(async (client) => {
       await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`fail:${key}`]);
       await client.query(
@@ -87,6 +113,7 @@ export class PostgresRateLimiter implements RateLimiter {
   }
 
   async oldestFailureAgeMs(key: string, windowMs: number): Promise<number | null> {
+    this.noteFailureWindow(windowMs);
     const result = await this.pool.query<{ age_ms: number | null }>(
       `SELECT FLOOR(
            EXTRACT(EPOCH FROM (clock_timestamp() - min(occurred_at))) * 1000
@@ -101,6 +128,63 @@ export class PostgresRateLimiter implements RateLimiter {
 
   async clearFailures(key: string): Promise<void> {
     await this.pool.query(`DELETE FROM rate_limit_failures WHERE bucket_key = $1`, [key]);
+  }
+
+  /**
+   * Deletes a bounded batch of expired buckets and failures older than the
+   * longest observed window. Active windows are not selected. SKIP LOCKED
+   * skips rows a request is updating. The advisory lock lets other processes
+   * skip the batch instead of waiting.
+   */
+  async deleteExpiredBatch(): Promise<CleanupResult> {
+    return this.transaction(async (client) => {
+      const lock = await client.query<{ locked: boolean }>(
+        'SELECT pg_try_advisory_xact_lock($1::bigint) AS locked',
+        [CLEANUP_LOCK_KEY],
+      );
+      if (lock.rows[0]?.locked !== true) return { buckets: 0, failures: 0 };
+      const buckets = await client.query(
+        `WITH doomed AS (
+           SELECT bucket_key
+           FROM rate_limit_buckets
+           WHERE reset_at <= clock_timestamp()
+           LIMIT $1
+           FOR UPDATE SKIP LOCKED
+         )
+         DELETE FROM rate_limit_buckets
+         WHERE bucket_key IN (SELECT bucket_key FROM doomed)`,
+        [this.cleanupBatchSize],
+      );
+      const failures = await client.query(
+        `WITH doomed AS (
+           SELECT id
+           FROM rate_limit_failures
+           WHERE occurred_at <= clock_timestamp() - ($2::text || ' milliseconds')::interval
+           LIMIT $1
+           FOR UPDATE SKIP LOCKED
+         )
+         DELETE FROM rate_limit_failures
+         WHERE id IN (SELECT id FROM doomed)`,
+        [this.cleanupBatchSize, String(this.failureRetentionMs)],
+      );
+      return {
+        buckets: buckets.rowCount ?? 0,
+        failures: failures.rowCount ?? 0,
+      };
+    });
+  }
+
+  private scheduleCleanup(): void {
+    const now = Date.now();
+    if (now - this.lastCleanupAt < this.cleanupIntervalMs) return;
+    this.lastCleanupAt = now;
+    void this.deleteExpiredBatch().catch(() => undefined);
+  }
+
+  private noteFailureWindow(windowMs: number): void {
+    if (Number.isFinite(windowMs) && windowMs > this.failureRetentionMs) {
+      this.failureRetentionMs = windowMs;
+    }
   }
 
   private async transaction<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {

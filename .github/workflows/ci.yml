@@ -11,6 +11,7 @@ on:
       - ci-run-on-main
       - cursor/correction-modules-02-04-82a0
       - cursor/hosting-architecture-5c9d
+      - cursor/correction-02-1451
       - main
 
 permissions:
