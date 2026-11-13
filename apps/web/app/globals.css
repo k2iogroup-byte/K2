@@ -1,0 +1,149 @@
+:root {
+  color-scheme: dark;
+  --bg: #0e1214;
+  --surface: #171c1f;
+  --line: #2c3438;
+  --text: #e7e1d5;
+  --muted: #c5cec9;
+  --accent: #c4a574;
+  --ok: #b7d1b0;
+  --bad: #f0b4a8;
+  --focus: #f2e2c4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 1.0625rem;
+  line-height: 1.5;
+}
+
+.skip {
+  position: absolute;
+  left: 1rem;
+  top: -3rem;
+  background: var(--focus);
+  color: #1a140c;
+  padding: 0.4rem 0.7rem;
+}
+
+.skip:focus {
+  top: 1rem;
+}
+
+main {
+  width: min(40rem, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: clamp(1.5rem, 6vw, 4rem) 0 3rem;
+}
+
+h1,
+h2 {
+  font-family: Palatino, 'Palatino Linotype', 'Iowan Old Style', Georgia, serif;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+h1 {
+  margin: 0.2rem 0 0.8rem;
+  font-size: clamp(2.4rem, 8vw, 3.5rem);
+  line-height: 1.05;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.75rem;
+}
+
+.lede,
+.footnote {
+  color: var(--muted);
+  max-width: 38rem;
+}
+
+.panel {
+  margin-top: 2rem;
+  padding: 1rem 1rem 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+}
+
+.panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  padding: 0.4rem 0.75rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+dl {
+  margin: 1rem 0 0.6rem;
+}
+
+dl div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 34%) 1fr;
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--line);
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.bad {
+  color: var(--bad);
+}
+
+@media (max-width: 28rem) {
+  dl div {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+}

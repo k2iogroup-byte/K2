@@ -1,0 +1,52 @@
+{
+  "name": "k2",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "npm@10.9.9",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run build -w @k2/shared && concurrently -n api,web -c blue,green \"npm run dev -w @k2/api\" \"npm run dev -w @k2/web\"",
+    "dev:api": "npm run build -w @k2/shared && npm run dev -w @k2/api",
+    "dev:web": "npm run build -w @k2/shared && npm run dev -w @k2/web",
+    "build": "npm run build -w @k2/shared && npm run build -w @k2/api && npm run build -w @k2/web",
+    "start:api": "npm run start -w @k2/api",
+    "start:web": "npm run start -w @k2/web",
+    "start:worker": "npm run start:worker -w @k2/api",
+    "typecheck": "npm run build -w @k2/shared && npm run typecheck --workspaces --if-present && tsc -p .railway/tsconfig.json --noEmit",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:coverage": "vitest run --config vitest.unit.config.ts --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "npm run build && npm run db:migrate && playwright test --config apps/web/playwright.config.ts",
+    "db:migrate": "npm run db:migrate:dev -w @k2/api",
+    "db:rollback": "npm run db:rollback:dev -w @k2/api",
+    "db:status": "npm run db:status:dev -w @k2/api",
+    "audit": "npm audit --audit-level=high",
+    "check:secrets": "node scripts/check-no-secrets.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.65.0",
+    "@types/node": "22.20.5",
+    "@vitest/coverage-v8": "5.1.0",
+    "concurrently": "10.0.7",
+    "eslint": "10.14.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-simple-import-sort": "14.0.0",
+    "prettier": "3.10.1",
+    "railway": "3.17.0",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "vitest": "5.1.0"
+  }
+}

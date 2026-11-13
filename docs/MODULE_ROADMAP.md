@@ -36,6 +36,7 @@
 - **Scope:** repository structure, coding standards, CI/CD pipeline, environments, secrets management baseline, documentation (this set), decision process.
 - **Depends on:** founder decisions on hosting (OQ-071) and frontend (OQ-070).
 - **Exit criteria:** pipelines green, secret scanning active, environments provisioned, ADR process in place.
+- **Module 01 implementation status:** the repository, local PostgreSQL migrations, CI workflow, and ADR record are implemented on `module-01-project-foundation`. The stack is an engineering selection (PROPOSED). OQ-070 and OQ-071 are not closed. Staging accounts are not provisioned; owner credentials are required. GitHub secret scanning and branch protection are owner settings, not objects this module can turn on. See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md).
 
 ### M-02 Authentication and User Management
 - **Scope:** registration, email verification, login, MFA, sessions, password reset, RBAC, staff SSO.

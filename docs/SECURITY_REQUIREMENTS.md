@@ -1,7 +1,9 @@
 # K2 Group — Security Requirements
 
-> **Phase:** Documentation-only foundation phase. Not production-ready.
+> **Phase:** Documentation-only foundation phase for these requirements. Not production-ready.
 > The brief states that **security is essential from the beginning** (CONFIRMED). The security *areas* below are CONFIRMED from the brief §15; the specific *controls* are PROPOSED unless noted.
+>
+> **Module 01** implemented only the foundation controls listed in [ARCHITECTURE_DECISIONS.md](./ARCHITECTURE_DECISIONS.md) (headers, CORS, validation, centralized errors, redacted structured logs, secret handling, dependency audit). The controls in the tables below are not implemented and remain PROPOSED. Module 01 does not make the application secure.
 
 ---
 

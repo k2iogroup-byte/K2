@@ -1,7 +1,8 @@
 # K2 Group — Platform Documentation (Foundation Phase)
 
-> **Status: DOCUMENTATION-ONLY FOUNDATION PHASE.**
-> No application code, frontend components, backend services, database migrations, APIs, or trading engines have been written. Every document in this folder is a planning artefact. Nothing here is production-ready, and nothing here should be read as an approved implementation.
+> **Module 01 update (2026-11-13).** The founder specification *Module 01: Project Foundation* authorized a technical foundation: a separate frontend and backend, PostgreSQL migrations, CI, and the security baseline described in [ARCHITECTURE_DECISIONS.md](./ARCHITECTURE_DECISIONS.md). That work does not implement authentication, payments, trading, or Challenge rules, and it does not close open founder questions. Technology chosen while the brief still listed candidates is **PROPOSED** (see [TECH_STACK_DECISIONS.md](./TECH_STACK_DECISIONS.md)). Confirmed business rules in this folder were not rewritten.
+>
+> **Status of the business documents:** planning artefacts. Nothing in this folder marks the firm production-ready or approves an unresolved business rule. The documentation-only restriction below governed the phase that wrote these business documents. It is not a description of the current repository, which now contains the Module 01 foundation.
 
 ## Purpose
 
@@ -42,6 +43,13 @@ All architecture, database, and API content is **PROPOSED** in its entirety.
 | 8 | [DECISIONS_LOG.md](./DECISIONS_LOG.md) | Chronological register of confirmed founder decisions and, separately, pending recommendations awaiting decision. |
 | 9 | [OPEN_QUESTIONS.md](./OPEN_QUESTIONS.md) | Unresolved items, contradictions, and critical risks with impact analysis and proposed (non-binding) resolutions. |
 | 10 | [MVP_SCOPE.md](./MVP_SCOPE.md) | Proposed MVP boundary. Investor Copy Trading and Global Competition are explicitly **out of MVP**. Launch gates. |
+| 11 | [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) | Module 01 repository layout. Technical. |
+| 12 | [TECH_STACK_DECISIONS.md](./TECH_STACK_DECISIONS.md) | Module 01 stack evaluation. PROPOSED where the brief left the choice open. |
+| 13 | [DEVELOPMENT_SETUP.md](./DEVELOPMENT_SETUP.md) | How to run the foundation locally. |
+| 14 | [ENVIRONMENT_CONFIGURATION.md](./ENVIRONMENT_CONFIGURATION.md) | Development, staging, and production configuration. |
+| 15 | [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) | Staging preparation for Vercel and Railway. Accounts are not created. |
+| 16 | [TESTING_GUIDE.md](./TESTING_GUIDE.md) | Unit, integration, and end-to-end commands. |
+| 17 | [ARCHITECTURE_DECISIONS.md](./ARCHITECTURE_DECISIONS.md) | Module 01 architecture decisions and the security baseline. |
 
 ## Reading Order
 
@@ -61,6 +69,8 @@ All architecture, database, and API content is **PROPOSED** in its entirety.
 | `OQ-xxx` / `RISK-xxx` | Open question / critical risk | OPEN_QUESTIONS.md |
 
 ## Phase Restrictions (from the founder brief)
+
+These lines record the documentation phase. Module 01, a later specification, authorized the foundation code. They still forbid inventing business rules and committing credentials.
 
 - **CONFIRMED:** Do not write application code in this phase.
 - **CONFIRMED:** Do not create frontend components, backend services, database migrations, APIs, or trading engines.

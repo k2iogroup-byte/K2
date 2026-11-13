@@ -1,6 +1,8 @@
 # K2 Group — Logical Database Schema (PROPOSED)
 
-> **Status of this entire document: PROPOSED.** This is a logical data model described in tables and prose. It contains **no DDL, no migrations, and no runnable code**. Names, types, and relationships are recommendations for review. Business values referenced here (prices, limits, splits) are governed by [BUSINESS_PLAN.md](./BUSINESS_PLAN.md) and are stored as data, not hard-coded.
+> **Status of this entire document: PROPOSED.** This is a logical data model described in tables and prose. Names, types, and relationships are recommendations for review. Business values referenced here (prices, limits, splits) are governed by [BUSINESS_PLAN.md](./BUSINESS_PLAN.md) and are stored as data, not hard-coded.
+>
+> **Module 01:** No business table in this document has been created. The foundation added only the migration bookkeeping table `schema_migrations` and the infrastructure row `foundation_schema_info`. See `apps/api/db/migrations/` and [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md). This document remains a proposed logical model.
 
 ---
 

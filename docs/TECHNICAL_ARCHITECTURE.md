@@ -172,3 +172,16 @@ These figures are **planning hypotheses**, not commitments.
 ## 10. Architecture Decisions Requiring Founder Input
 
 See [DECISIONS_LOG.md](./DECISIONS_LOG.md) (pending proposals P-xxx) and [OPEN_QUESTIONS.md](./OPEN_QUESTIONS.md): OQ-070 (React), OQ-071 (Railway vs Vercel), OQ-072 (broker), OQ-073 (US equities data licensing), OQ-074 (FX data source), OQ-075 (payment processor), OQ-076 (KYC vendor).
+
+## 11. Module 01 implementation note (2026-11-13)
+
+This section records what Module 01 built. It does not change the confirmed constraints in §1. Choices the brief left open (TC-04, TC-05, TC-06) are implemented as **PROPOSED** engineering selections so the repository has one working stack. They are not founder approvals of OQ-070 or OQ-071. Reasons, alternatives, cost, and scaling notes are in [TECH_STACK_DECISIONS.md](./TECH_STACK_DECISIONS.md) and [ARCHITECTURE_DECISIONS.md](./ARCHITECTURE_DECISIONS.md).
+
+| Layer | Implemented in Module 01 | Status |
+|---|---|---|
+| Frontend | Next.js, React, TypeScript. Dark shell and PWA manifest only. No terminal | PROPOSED (React candidate; OQ-070 open) |
+| Backend | Node.js, TypeScript, Fastify, one modular monolith | PROPOSED runtime. A separate backend is required by the Module 01 specification. Polyglot engines are not introduced |
+| Database | PostgreSQL 16, SQL migrations with rollback. No business tables | Required by the Module 01 specification |
+| Redis | Not introduced | Deferred until a module needs shared ephemeral state |
+| CI | GitHub Actions. No deploy job | Required by the Module 01 specification |
+| Staging targets | Config for Vercel (frontend) and Railway (API + Postgres). No accounts created | PROPOSED (OQ-071 open) |
