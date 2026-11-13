@@ -31,8 +31,10 @@ sudo -u postgres createdb -O k2 k2_test
 Connect over TCP so password authentication is used:
 
 ```bash
-psql "postgresql://k2:paste-a-long-local-password@127.0.0.1:5432/k2_dev" -c 'SELECT current_user;'
+psql "postgresql://k2:REPLACE_WITH_LOCAL_PASSWORD@127.0.0.1:5432/k2_dev" -c 'SELECT current_user;'
 ```
+
+Substitute the password you just created for `REPLACE_WITH_LOCAL_PASSWORD`. The API rejects that placeholder if it is left in `DATABASE_URL`.
 
 ## 3. Configure environment files
 
