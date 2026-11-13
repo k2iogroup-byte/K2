@@ -59,7 +59,7 @@ Raw ticks are not stored. `quote_snapshots` keeps one current row per instrument
 
 Consumers subscribe inside the API process. One provider connection feeds every subscriber. The WebSocket route `/ws/market-data` requires a session with `market_data.read`. The existing `/ws` ping route is unchanged.
 
-Redis, Kafka, and a second service were not added. The API already owns the WebSocket connections, and the planning capacity is about 1,000 registered traders with a smaller concurrent set. An in-process fan-out meets that shape. A separate bus would be justified only after a measured limit, which this module does not claim to have reached. The volume test sends 5,000 quotes to four in-process consumers and checks order, duplicates, and that the heap growth stays under 80 MB. A second test sends 1,000 quotes to 32 consumers. Neither is a production capacity test of 10,000 traders.
+Redis, Kafka, and a second service were not added. The API already owns the WebSocket connections, and the planning capacity is about 1,000 registered traders with a smaller concurrent set. An in-process fan-out meets that shape. A separate bus would be justified only after a measured limit, which this module does not claim to have reached. The hosting decision's trigger list is in [DEPLOYMENT_ARCHITECTURE.md](./DEPLOYMENT_ARCHITECTURE.md). The process was not split. The volume test sends 5,000 quotes to four in-process consumers and checks order, duplicates, and that the heap growth stays under 80 MB. A second test sends 1,000 quotes to 32 consumers. Neither is a production capacity test of 10,000 traders.
 
 ## HTTP
 

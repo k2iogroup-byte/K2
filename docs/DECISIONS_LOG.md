@@ -87,12 +87,13 @@ Source date for all Part A entries: founder brief as received for the documentat
 | ID | Decision | Brief § | Status |
 |---|---|---|---|
 | D-070 | Responsive web + installable PWA; no native mobile or Electron for MVP; professional dark institutional UI. | 13 | CONFIRMED |
-| D-071 | React is a candidate only; Railway and Vercel are candidate hosts; GitHub is source control. | 13 | CONFIRMED (choices UNRESOLVED) |
+| D-071 | React is a candidate only; Railway and Vercel are candidate hosts; GitHub is source control. | 13 | CONFIRMED. React remains UNRESOLVED (OQ-070). The host split is D-077 |
 | D-072 | Real market data required; data feed and broker execution are separate; realistic simulation (spread, liquidity, slippage, partial fills, sessions). | 13 | CONFIRMED |
 | D-073 | Binance public WebSocket possible for crypto; US equities provider after licensing/redistribution review; no fabricated prices; explicit stale/disconnected status. | 13 | CONFIRMED |
 | D-074 | Initial ~1,000 registered traders; growth toward ~10,000; do not assume all are concurrently active; prepare performance and load-testing strategy. | 14 | CONFIRMED |
 | D-075 | Security essential from the beginning, covering the fourteen areas in SECURITY_REQUIREMENTS §1; never store credentials in GitHub source. | 15 | CONFIRMED |
 | D-076 | Copy trading is prohibited for Challenge and Funded Simulation. A confirmed violation blocks the affected account automatically. Similar trades alone are not sufficient; multiple independent signals and retained evidence are required. 100% detection is not guaranteed. Recorded from the 2026-11-14 correction task. The detection engine is not implemented. | Correction task §6 | CONFIRMED |
+| D-077 | Vercel hosts the frontend (`apps/web`): public site, trader terminal, dashboard, admin panel, routing, static assets, CDN, and preview deployments. Railway hosts the backend: API, authentication, challenge and account management, market-data engine, WebSocket servers, trading engine, risk engine, background workers, and later payments and ledger. The two deploy independently. WebSocket connections go to Railway. Secrets stay out of GitHub and the frontend bundle. Server-side secrets stay on the backend. Railway services are logically separable and are not forced into one process. PostgreSQL placement and backups are decided separately. Cost and limits are monitored. The architecture is designed with 10,000 concurrent active users in mind, and that capacity is not claimed until a load test passes. | Hosting decision 2026-11-13 | CONFIRMED. Domain, plans, region, and backup retention remain PROPOSED (P-017 to P-019) |
 
 ---
 
@@ -103,7 +104,7 @@ Source date for all Part A entries: founder brief as received for the documentat
 | P-001 | Adopt a single written drawdown specification (equity-based, explicit reference points, worked examples) for all account types. | Prevents disputes and engine ambiguity. | OQ-001, D-025 | PROPOSED |
 | P-002 | Define "trading day" as a UTC calendar day with at least one executed opening trade. | Needed for 7-day minimum and payouts. | OQ-002 | PROPOSED |
 | P-003 | Launch MVP with a single market first (candidate: crypto, owing to free public data; or equities if Real Account path is the priority). | Reduces licensing and engineering scope. | OQ-020 | PROPOSED |
-| P-004 | Hybrid hosting: PWA on a CDN-oriented platform; long-running data/risk/execution services and database on a container platform. | Serverless platforms poorly suit persistent WebSockets and stateful engines. | OQ-071 | PROPOSED |
+| P-004 | Hybrid hosting: PWA on a CDN-oriented platform; long-running data/risk/execution services and database on a container platform. | Serverless platforms poorly suit persistent WebSockets and stateful engines. | OQ-071 | ACCEPTED 2026-11-13 by D-077. Domain, region, plans, and backups remain P-017 to P-019 |
 | P-005 | Use React (with a mature framework) for the PWA. | Ecosystem, charting, hiring. | OQ-070 | PROPOSED |
 | P-006 | PostgreSQL as primary store with exact decimal money and append-only double-entry ledger. | Financial integrity. | DATABASE_SCHEMA | PROPOSED |
 | P-007 | Modular monolith plus dedicated engine processes, not microservices, for 1K–10K traders. | Lower operational risk. | TECHNICAL_ARCHITECTURE §2 | PROPOSED |
@@ -116,6 +117,10 @@ Source date for all Part A entries: founder brief as received for the documentat
 | P-014 | Replace the $300K competition prize with an existing size or reinstate $300K as a prize-only size — founder to choose. | Resolves contradiction. | OQ-060 | PROPOSED (options only) |
 | P-015 | Rule-set versions are immutable and bound to an account at purchase. | Fairness and auditability. | FR-081 | PROPOSED; REQUIRES LEGAL REVIEW |
 | P-016 | Obtain a written regulatory opinion before accepting payments. | Regulatory exposure. | OQ-080 | PROPOSED |
+| P-017 | One firm-owned registrable domain. Web at `app.<domain>`, API and WebSocket at `api.<domain>`, staging on `app.staging.<domain>` and `api.staging.<domain>`. Cookie `Domain=<domain>`, `SameSite=Lax`, `Secure` outside development. Do not use `*.vercel.app` with `*.railway.app` as the cookie site. | Module 02 cookies are host-only and are set through the same-origin `/k2-api` proxy. Split platform hostnames cannot share them, so the browser cannot authenticate a direct Railway WebSocket. | D-077 | PROPOSED. Blocked on the domain name. `COOKIE_DOMAIN` is not implemented |
+| P-018 | PostgreSQL on Railway private networking, in a region the founder chooses. Pro plan (confirm on the account) so volume backups and point-in-time recovery exist. Daily, weekly, and monthly volume backups, PITR, plus an encrypted `pg_dump` outside the project. Quarterly restore drill. No production data in staging or preview. | Trial volumes are disposable and restores stay inside one Railway project. | D-077, OQ-084 | PROPOSED |
+| P-019 | Buy Vercel Pro or Enterprise before creating a project. Hobby forbids commercial use. Buy a Railway plan with a custom domain and backups before any database that must be kept. Set spend caps on both. | K2 is a commercial product. The published trial is $5 for 30 days and then deletes stateful volumes. | D-077 | PROPOSED. Blocked on the purchase |
+| P-020 | Keep the market-data engine inside the one API replica until a listed trigger: more than one replica, a load test that shows fan-out delaying the API, a second consumer that needs the feed, or the first background job (worker only). Do not add Redis or Kafka before that trigger. | Requirement 7 forbids a permanent forced monolith. Splitting now has no measured need and was out of scope. | D-077 | PROPOSED as the trigger list. The split itself is not approved and was not done |
 
 ## Part C — Change Procedure (PROPOSED)
 

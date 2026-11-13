@@ -42,7 +42,13 @@ export default defineRailway((ctx) => {
       DATABASE_SSL: 'disable',
       DATABASE_POOL_MAX: '10',
       NODE_ENV: 'production',
+      MARKET_DATA_MODE: 'disconnected',
+      // One Railway edge hop. Never set this to the string "true".
+      TRUST_PROXY: '1',
       CORS_ORIGINS: preserve(),
+      WEB_ORIGIN: preserve(),
+      MFA_ENCRYPTION_KEY: preserve(),
+      EMAIL_DELIVERY: preserve(),
     },
   });
 

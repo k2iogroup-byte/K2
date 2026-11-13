@@ -21,7 +21,7 @@ This document is the implementation record. The proposed identity sketch in [API
 
 Written from the Module 02 specification after inspecting `main` at `7f84f4528937c7f88235291cbe810c951ba3fc1a`.
 
-- **Keep the stack.** Fastify 5, Next.js 16, PostgreSQL, Zod, the existing error handler, request ids, Pino redaction, and the checksummed migration runner. No Redis. `trustProxy` stays `false`.
+- **Keep the stack.** Fastify 5, Next.js 16, PostgreSQL, Zod, the existing error handler, request ids, Pino redaction, and the checksummed migration runner. No Redis. `trustProxy` was left `false` in this module. The hosting task later made it `TRUST_PROXY`, still defaulting to off.
 - **Do not edit `0001`.** Add `0002_identity_access` only.
 - **Paths follow the module specification and the implemented `/health` style**, not the proposed `/v1` refresh-token sketch. Opaque server-side sessions replace access and refresh tokens.
 - **Public registration always creates `TRADER`.** Request bodies are strict. `role`, `status`, and permissions are rejected, not ignored.
@@ -103,7 +103,7 @@ These are not founder business rules. They are the security parameters used beca
 12. Logs redact passwords, tokens, cookies, authorization, MFA material, and connection strings. Request logs drop query strings. Email links use a fragment so the web server does not receive the token.
 13. No staff password is in git. Bootstrap is a CLI, not an HTTP route, and it refuses to run twice.
 
-`trustProxy` remains `false`. Behind a reverse proxy, `request.ip` is the proxy address until a future change names the trusted hop. That change is not made here.
+`TRUST_PROXY` defaults to off. If it stays off behind Railway, every client shares the proxy address for rate limits. The hosting task accepts `1` through `5` or a CIDR list and rejects `true`. The staging file sets `1`. See [DEPLOYMENT_ARCHITECTURE.md](./DEPLOYMENT_ARCHITECTURE.md).
 
 ## Email
 

@@ -15,6 +15,7 @@ describe('configuration validation', () => {
     expect(config.appEnv).toBe('development');
     expect(config.port).toBe(4000);
     expect(config.corsOrigins).toEqual(['http://127.0.0.1:3000']);
+    expect(config.trustProxy).toEqual({ mode: 'off' });
   });
 
   it('reports every missing required value without echoing a secret', () => {
@@ -93,6 +94,26 @@ describe('configuration validation', () => {
         }),
       ),
     ).toThrow(/public database hosts/);
+  });
+
+  it('accepts a hop count or a proxy range and rejects trust-all values', () => {
+    expect(loadConfig(validEnv({ TRUST_PROXY: '1' })).trustProxy).toEqual({
+      mode: 'hops',
+      hops: 1,
+    });
+    expect(loadConfig(validEnv({ TRUST_PROXY: 'false' })).trustProxy).toEqual({ mode: 'off' });
+    expect(loadConfig(validEnv({ TRUST_PROXY: '10.0.0.0/8, 192.0.2.10' })).trustProxy).toEqual({
+      mode: 'ranges',
+      ranges: ['10.0.0.0/8', '192.0.2.10'],
+    });
+    expect(loadConfig(validEnv({ TRUST_PROXY: 'fd00::/8' })).trustProxy).toEqual({
+      mode: 'ranges',
+      ranges: ['fd00::/8'],
+    });
+
+    for (const value of ['true', 'TRUE', '*', 'yes', '0.0.0.0/0', '::/0', '6', 'not-a-proxy']) {
+      expect(() => loadConfig(validEnv({ TRUST_PROXY: value }))).toThrow(/TRUST_PROXY/);
+    }
   });
 
   it('allows an ephemeral port only in development', () => {

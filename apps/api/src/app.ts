@@ -4,7 +4,7 @@ import helmet from '@fastify/helmet';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import type pg from 'pg';
 
-import type { AppConfig } from './config/env.js';
+import type { AppConfig, TrustProxySetting } from './config/env.js';
 import type { DatabaseProbe } from './infrastructure/db/probe.js';
 import { installErrorHandling } from './infrastructure/http/errors.js';
 import { isAllowedOrigin } from './infrastructure/http/origin.js';
@@ -39,7 +39,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     logger: options.logger === undefined ? loggerOptions(options.config) : options.logger,
     bodyLimit: BODY_LIMIT_BYTES,
     requestTimeout: 15_000,
-    trustProxy: false,
+    trustProxy: fastifyTrustProxy(options.config.trustProxy),
     requestIdHeader: 'x-request-id',
     genReqId: (request) => resolveRequestId(request.headers['x-request-id']),
   });
@@ -112,4 +112,18 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   }
   await registerWebSocket(app, options.config);
   return app;
+}
+
+/**
+ * Fastify 5.12 treats a numeric `trustProxy` as "trust nobody" and ignores
+ * `X-Forwarded-For`. A hop count is therefore a function. `true` is never passed:
+ * that would accept a client-supplied address from any peer.
+ */
+function fastifyTrustProxy(
+  setting: TrustProxySetting,
+): false | string[] | ((address: string, hop: number) => boolean) {
+  if (setting.mode === 'off') return false;
+  if (setting.mode === 'ranges') return [...setting.ranges];
+  const hops = setting.hops;
+  return (_address, hop) => hop < hops;
 }

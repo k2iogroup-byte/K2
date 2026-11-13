@@ -100,9 +100,9 @@ Not implemented, and required later by `SECURITY_REQUIREMENTS.md` (those control
 
 ## ADR-009 — Staging targets, not a production platform
 
-**Status:** PROPOSED hosting (OQ-071). Required to prepare, not to provision.
+**Status:** The platform split is CONFIRMED (D-077). Staging is still not provisioned.
 
-Vercel serves the frontend. Railway serves the API and Postgres for an environment named `staging`. See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md). No hosted resource exists yet.
+Vercel serves the frontend. Railway serves the API and Postgres. The service map, cookie rules, and environment matrix are in [DEPLOYMENT_ARCHITECTURE.md](./DEPLOYMENT_ARCHITECTURE.md). The staging sequence remains [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md). No hosted resource exists yet. `.railway/railway.ts` still refuses an environment that is not named `staging`.
 
 ## ADR-010 — Business documents stay the business source
 
@@ -110,7 +110,7 @@ Vercel serves the frontend. Railway serves the API and Postgres for an environme
 
 `BUSINESS_PLAN.md`, `DECISIONS_LOG.md`, `OPEN_QUESTIONS.md`, `PRODUCT_REQUIREMENTS.md`, `MVP_SCOPE.md`, and the business sections of the other planning documents were not rewritten. Technology notes were added only where a reader would otherwise think the documentation-only phase still forbids a foundation, or that the logical database had been created. Those notes are labeled.
 
-OQ-070 (React) and OQ-071 (Railway and Vercel) remain open founder questions. This repository is the engineering selection the Module 01 specification told the team to make so later modules have one codebase.
+OQ-070 (React) remains open. OQ-071 (Railway and Vercel) is closed by D-077. This repository is the engineering selection the Module 01 specification told the team to make so later modules have one codebase.
 
 ## ADR-011 — Server-side sessions for Module 02
 
@@ -120,7 +120,7 @@ Authentication is an opaque session row in PostgreSQL. The cookie holds the toke
 
 The browser talks to `/k2-api` on the Next.js origin. That route proxies to the API, so the session cookie is first-party and `SameSite=Lax`. `Secure` is set outside development. CSRF uses `x-k2-request` plus a session-bound `k2_csrf` cookie. CORS remains an explicit origin list and now allows the authentication methods.
 
-Rate limits are in-process. Redis was not added. `trustProxy` stays `false`.
+Authentication rate limits are PostgreSQL rows keyed by `request.ip`. `TRUST_PROXY` defaults to off, accepts a hop count of 1 to 5 or a CIDR list, and rejects `true`. The staging Railway file sets `1`. See [DEPLOYMENT_ARCHITECTURE.md](./DEPLOYMENT_ARCHITECTURE.md). The in-memory limiter remains a test double. Redis was not added.
 
 Argon2id parameters, session lifetimes, and the permission grants are engineering defaults recorded in [MODULE_02_AUTHENTICATION.md](./MODULE_02_AUTHENTICATION.md). They are not new founder business rules.
 

@@ -50,6 +50,7 @@ All architecture, database, and API content is **PROPOSED** in its entirety.
 | 15 | [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) | Staging preparation for Vercel and Railway. Accounts are not created. |
 | 16 | [TESTING_GUIDE.md](./TESTING_GUIDE.md) | Unit, integration, and end-to-end commands. |
 | 17 | [ARCHITECTURE_DECISIONS.md](./ARCHITECTURE_DECISIONS.md) | Module 01 architecture decisions and the security baseline. |
+| 18 | [DEPLOYMENT_ARCHITECTURE.md](./DEPLOYMENT_ARCHITECTURE.md) | CONFIRMED Vercel/Railway split, connection map, environment matrix, and the hosting gaps that still need a founder decision. Nothing is deployed. |
 
 ## Reading Order
 
@@ -80,4 +81,4 @@ These lines record the documentation phase. Module 01, a later specification, au
 
 ## Next Step
 
-The recommended next phase is a **decision workshop** with the founder to close the blocking items listed in OPEN_QUESTIONS.md (drawdown formulas, Funded Simulation payout split, commission across markets, US equities data licensing, broker selection, hosting choice, and the regulatory opinion). Only after those are closed should technical specification and implementation of the MVP begin.
+The recommended next phase is a **decision workshop** with the founder to close the blocking items listed in OPEN_QUESTIONS.md (drawdown formulas, Funded Simulation payout split, commission across markets, US equities data licensing, broker selection, and the regulatory opinion). The Vercel/Railway split is decided (D-077). The domain, paid plans, database region, and backup retention are still open in DEPLOYMENT_ARCHITECTURE.md. Only after the open business questions are closed should implementation of the remaining MVP begin.

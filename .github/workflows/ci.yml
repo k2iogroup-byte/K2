@@ -10,6 +10,7 @@ on:
       - module-04-market-data
       - ci-run-on-main
       - cursor/correction-modules-02-04-82a0
+      - cursor/hosting-architecture-5c9d
       - main
 
 permissions:

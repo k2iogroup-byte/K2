@@ -1,6 +1,6 @@
 # K2 Group — Technical Architecture (PROPOSED)
 
-> **Status of this entire document: PROPOSED.** It is a recommendation from the planning team, not an approved design. Founder constraints from the brief are marked **CONFIRMED**; everything else is a recommendation pending decision. No code, configuration, or infrastructure has been created.
+> **Status of this entire document: PROPOSED**, except the hosting split recorded in section 12, which the founder confirmed on 2026-11-13. Founder constraints from the brief are marked **CONFIRMED**; everything else is a recommendation pending decision. Domain, paid plans, database region, and backups remain PROPOSED. No hosted project was created.
 
 ---
 
@@ -12,8 +12,8 @@
 | TC-02 | No native mobile app or Electron desktop app for MVP. | CONFIRMED |
 | TC-03 | Professional dark institutional interface. | CONFIRMED |
 | TC-04 | React-based frontend is a **candidate**, not a confirmed final choice. | UNRESOLVED (OQ-070) |
-| TC-05 | Backend, database, hosting, and deployment architecture must be evaluated. | UNRESOLVED |
-| TC-06 | Railway and Vercel are **candidate** hosting platforms. | UNRESOLVED (OQ-071) |
+| TC-05 | Backend, database, hosting, and deployment architecture must be evaluated. | Hosting split CONFIRMED (D-077). Region, plans, and backups remain PROPOSED |
+| TC-06 | Railway and Vercel are **candidate** hosting platforms. | CONFIRMED split (D-077): Vercel frontend, Railway backend. OQ-071 closed for the platform choice |
 | TC-07 | GitHub is the source-control system. | CONFIRMED |
 | TC-08 | Real market data is required for actual charts. | CONFIRMED |
 | TC-09 | Market data feed and broker execution are **separate systems**. | CONFIRMED |
@@ -107,7 +107,7 @@ Identical pre-trade checks, but execution is routed through the Broker Execution
 | Regulatory/data-residency controls | Region selection available; verify against legal requirements | Region selection available; verify |
 | Operational maturity for financial workloads | Verify SLAs, audit reports, and support tiers | Verify SLAs, audit reports, and support tiers |
 
-**PROPOSED recommendation (not a decision):** A hybrid is likely most appropriate — the PWA on a CDN-oriented platform (Vercel is a strong candidate) and the long-running market-data, risk, and execution processes plus the primary database on a container platform (Railway is a candidate; a major cloud provider should also be evaluated for compliance and SLA reasons as scale grows). Final decision: **UNRESOLVED (OQ-071)**.
+**CONFIRMED (D-077, 2026-11-13):** Vercel hosts the frontend (`apps/web`). Railway hosts the backend (`apps/api`, WebSocket, and workers) and is the proposed place for PostgreSQL. The two deploy independently. WebSocket traffic goes to Railway and does not pass through Vercel. The service map, cookie constraint, environment matrix, and items still awaiting founder input are in [DEPLOYMENT_ARCHITECTURE.md](./DEPLOYMENT_ARCHITECTURE.md). A 10,000-concurrent figure is a target, not a measured capacity.
 
 ### 6.2 Environments (PROPOSED)
 
@@ -171,11 +171,11 @@ These figures are **planning hypotheses**, not commitments.
 
 ## 10. Architecture Decisions Requiring Founder Input
 
-See [DECISIONS_LOG.md](./DECISIONS_LOG.md) (pending proposals P-xxx) and [OPEN_QUESTIONS.md](./OPEN_QUESTIONS.md): OQ-070 (React), OQ-071 (Railway vs Vercel), OQ-072 (broker), OQ-073 (US equities data licensing), OQ-074 (FX data source), OQ-075 (payment processor), OQ-076 (KYC vendor).
+See [DECISIONS_LOG.md](./DECISIONS_LOG.md) (pending proposals P-xxx) and [OPEN_QUESTIONS.md](./OPEN_QUESTIONS.md): OQ-070 (React), OQ-072 (broker), OQ-073 (US equities data licensing), OQ-074 (FX data source), OQ-075 (payment processor), OQ-076 (KYC vendor). OQ-071 (Railway vs Vercel) is closed by D-077. Domain, plan purchase, database region, and backup retention remain open in [DEPLOYMENT_ARCHITECTURE.md](./DEPLOYMENT_ARCHITECTURE.md).
 
 ## 11. Module 01 implementation note (2026-11-13)
 
-This section records what Module 01 built. It does not change the confirmed constraints in §1. Choices the brief left open (TC-04, TC-05, TC-06) are implemented as **PROPOSED** engineering selections so the repository has one working stack. They are not founder approvals of OQ-070 or OQ-071. Reasons, alternatives, cost, and scaling notes are in [TECH_STACK_DECISIONS.md](./TECH_STACK_DECISIONS.md) and [ARCHITECTURE_DECISIONS.md](./ARCHITECTURE_DECISIONS.md).
+This section records what Module 01 built. It does not change the confirmed constraints in §1. React (TC-04, OQ-070) remains an engineering selection, not a founder approval. The hosting split (TC-06, formerly OQ-071) was confirmed later by D-077. Reasons, alternatives, cost, and scaling notes are in [TECH_STACK_DECISIONS.md](./TECH_STACK_DECISIONS.md) and [ARCHITECTURE_DECISIONS.md](./ARCHITECTURE_DECISIONS.md).
 
 | Layer | Implemented in Module 01 | Status |
 |---|---|---|
@@ -184,4 +184,19 @@ This section records what Module 01 built. It does not change the confirmed cons
 | Database | PostgreSQL 16, SQL migrations with rollback. No business tables | Required by the Module 01 specification |
 | Redis | Not introduced | Deferred until a module needs shared ephemeral state |
 | CI | GitHub Actions. No deploy job | Required by the Module 01 specification |
-| Staging targets | Config for Vercel (frontend) and Railway (API + Postgres). No accounts created | PROPOSED (OQ-071 open) |
+| Staging targets | Config for Vercel (frontend) and Railway (API + Postgres). No accounts created | Split CONFIRMED (D-077). Accounts still not created. Details in section 12 |
+
+## 12. Hosting decision (2026-11-13)
+
+D-077 confirms the split: Vercel runs `apps/web`; Railway runs `apps/api`, WebSocket servers, and workers. Deployments are independent. The operational map is [DEPLOYMENT_ARCHITECTURE.md](./DEPLOYMENT_ARCHITECTURE.md).
+
+Still PROPOSED, and not implemented where noted there:
+
+- The shared registrable domain and the cookie `Domain` attribute. Platform hostnames (`*.vercel.app` and `*.railway.app`) do not share the session cookie.
+- WebSocket clients connect to Railway directly. The origin allowlist is `CORS_ORIGINS`. A missing `Origin` is still accepted; closing that gap is a follow-up.
+- `TRUST_PROXY` defaults to off and accepts a hop count or a CIDR list. The string `true` is rejected. The staging file sets `1`. This is an engineering control, not a founder decision.
+- The market-data engine stays inside the API process until a listed trigger. It was not split.
+- Vercel Hobby is not a valid plan for this commercial product. Railway trial limits and backup placement are recorded as a proposal.
+- 10,000 concurrent users is a target. No load test has confirmed it.
+
+No Vercel or Railway project was created.

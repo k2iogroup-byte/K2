@@ -1,9 +1,21 @@
+import { isIP } from 'node:net';
+
 export type AppEnv = 'development' | 'staging' | 'production';
 export type LogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
 export type DatabaseSslMode = 'disable' | 'no-verify' | 'verify';
 
 export type EmailDeliveryMode = 'capture' | 'unconfigured' | 'smtp';
 export type MarketDataMode = 'disconnected' | 'test-fixture';
+
+/** `true` is intentionally absent. A hop count is not "trust every forwarded header". */
+export type TrustProxySetting =
+  | { readonly mode: 'off' }
+  | { readonly mode: 'hops'; readonly hops: number }
+  | { readonly mode: 'ranges'; readonly ranges: readonly string[] };
+
+const MAX_TRUSTED_HOPS = 5;
+const MAX_TRUSTED_RANGES = 32;
+const TRUST_PROXY_BOOLEANS = new Set(['true', 'yes', 'on', 'all', '*']);
 
 export type SmtpConfig = {
   host: string;
@@ -33,6 +45,7 @@ export type AppConfig = {
   loginDelayCapMs: number;
   emailOutboxPath: string | null;
   marketDataMode: MarketDataMode;
+  trustProxy: TrustProxySetting;
 };
 
 /** 32 bytes of 0x01. Development only. Rejected in staging and production. */
@@ -120,6 +133,7 @@ export function loadConfig(env: Env): AppConfig {
       ? null
       : readOutboxPath(env.EMAIL_OUTBOX_PATH, emailDelivery.mode, issues);
   const marketDataMode = readMarketDataMode(env.MARKET_DATA_MODE, appEnv, issues);
+  const trustProxy = readTrustProxy(env.TRUST_PROXY, issues);
 
   if (appEnv && database && databaseSsl) {
     checkDatabasePolicy(appEnv, database.url, databaseSsl, issues);
@@ -141,7 +155,8 @@ export function loadConfig(env: Env): AppConfig {
     !emailDelivery ||
     !webOrigin ||
     !loginDelay ||
-    !marketDataMode
+    !marketDataMode ||
+    !trustProxy
   ) {
     throw new ConfigError(issues.length > 0 ? issues : [{ path: 'config', message: 'is invalid' }]);
   }
@@ -165,7 +180,59 @@ export function loadConfig(env: Env): AppConfig {
     loginDelayCapMs: loginDelay.capMs,
     emailOutboxPath,
     marketDataMode,
+    trustProxy,
   };
+}
+
+const TRUST_PROXY_MESSAGE =
+  'must be false, a hop count from 1 to 5, or a comma-separated list of IP addresses or CIDRs';
+
+function readTrustProxy(raw: string | undefined, issues: ConfigIssue[]): TrustProxySetting | null {
+  const value = raw === undefined ? '' : raw.trim();
+  const lowered = value.toLowerCase();
+  if (value === '' || lowered === 'false' || value === '0') return { mode: 'off' };
+  if (TRUST_PROXY_BOOLEANS.has(lowered)) {
+    issues.push({ path: 'TRUST_PROXY', message: TRUST_PROXY_MESSAGE });
+    return null;
+  }
+  if (/^[1-9]\d*$/.test(value)) {
+    const hops = Number(value);
+    if (hops > MAX_TRUSTED_HOPS) {
+      issues.push({
+        path: 'TRUST_PROXY',
+        message: 'hop count must be an integer from 1 to 5',
+      });
+      return null;
+    }
+    return { mode: 'hops', hops };
+  }
+  const parts = value
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part !== '');
+  if (
+    parts.length === 0 ||
+    parts.length > MAX_TRUSTED_RANGES ||
+    parts.some((part) => !isIpOrCidr(part))
+  ) {
+    issues.push({ path: 'TRUST_PROXY', message: TRUST_PROXY_MESSAGE });
+    return null;
+  }
+  return { mode: 'ranges', ranges: [...new Set(parts)] };
+}
+
+function isIpOrCidr(value: string): boolean {
+  const slash = value.lastIndexOf('/');
+  const address = slash === -1 ? value : value.slice(0, slash);
+  const prefixText = slash === -1 ? undefined : value.slice(slash + 1);
+  const version = isIP(address);
+  if (version !== 4 && version !== 6) return false;
+  if (prefixText === undefined) return true;
+  if (!/^\d+$/.test(prefixText)) return false;
+  const prefix = Number(prefixText);
+  const max = version === 4 ? 32 : 128;
+  // A /0 range matches every address, which is the same as trusting arbitrary forwarded headers.
+  return prefix >= 1 && prefix <= max;
 }
 
 function readMarketDataMode(

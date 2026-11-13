@@ -1,5 +1,7 @@
 # Deployment guide
 
+The founder hosting decision and the service map are in [DEPLOYMENT_ARCHITECTURE.md](./DEPLOYMENT_ARCHITECTURE.md). This file is the staging preparation sequence. Where the two differ, the architecture document wins.
+
 Module 01 prepares staging and does not create it. No Vercel project, Railway project, database, or domain was created. There are no credentials in this environment. Staging deployment is **pending owner credentials**.
 
 Production deployment is out of scope. The workflow in `.github/workflows/ci.yml` has no deploy job. `.railway/railway.ts` throws unless the linked Railway environment is named exactly `staging`.
@@ -35,11 +37,17 @@ Market-data licences, a broker, and a payment processor are not staging costs fo
    - Root Directory: `apps/web`
    - Framework: Next.js
    - The committed `apps/web/vercel.json` runs `npm ci` and the shared-package build from the repository root.
-   - Environment variable: `NEXT_PUBLIC_API_BASE_URL` = the Railway API origin, including `https`, with no path. You can deploy the frontend first with a placeholder origin, then set the real Railway URL and redeploy. The value is public.
-   - Do not attach a production domain in this module.
+   - `NEXT_PUBLIC_API_BASE_URL` = the Railway API origin, including `https`, with no path. It is public and it is inlined at build time. Set it, then build.
+   - `API_PROXY_DESTINATION` = the same origin. It is server-only. The `/k2-api` route reads it. Do not put a password in it.
+   - Do not attach a production domain in this module. Use `app.<domain>` and `api.<domain>` only after the domain in DEPLOYMENT_ARCHITECTURE.md is chosen. Do not rely on `*.vercel.app` plus `*.railway.app` for the session cookie.
 3. Install the Railway CLI (3.17 or newer for this file’s `railway/iac` import). Authenticate as the owner.
 4. Create a Railway project and an environment named `staging`. Link the CLI to that environment. Do not link an environment named `production`. `railway config plan` will throw if you do.
-5. Set `CORS_ORIGINS` on the API service to the exact Vercel origin (`https://…`, no path, no trailing slash). The infrastructure file uses `preserve()` for that variable so a later apply does not wipe a value the owner set. The API will not pass its health check until the variable is a valid https origin.
+5. Set these on the API service before the first apply. The infrastructure file uses `preserve()` so a later apply does not wipe them. The process exits before listen if any required value is missing, and the health check then fails.
+   - `CORS_ORIGINS`: the exact Vercel origin (`https://…`, no path, no trailing slash). Do not use `*`.
+   - `WEB_ORIGIN`: the same origin. Email links use it.
+   - `MFA_ENCRYPTION_KEY`: a 32-byte key, base64, generated locally. Do not commit it.
+   - `EMAIL_DELIVERY`: `unconfigured` until an SMTP vendor exists.
+   - `TRUST_PROXY` is already `1` in the file. Do not change it to `true`.
 6. From the repository root, against the staging link:
 
    ```bash
