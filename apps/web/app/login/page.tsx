@@ -22,7 +22,12 @@ export default function LoginPage(): ReactElement {
     setMessage(null);
     const result = mfaRequired
       ? await authFetch('/auth/mfa/verify', { method: 'POST', body: { code } })
-      : await authFetch('/auth/login', { method: 'POST', body: { email, password } });
+      : await authFetch('/auth/login', {
+          method: 'POST',
+          body: email.includes('@')
+            ? { email: email.trim(), password }
+            : { username: email.trim(), password },
+        });
     setPending(false);
     if (result.status === 200) {
       const body = result.body;
@@ -45,7 +50,7 @@ export default function LoginPage(): ReactElement {
   return (
     <AuthChrome
       title="Sign in"
-      lede="Use the email and password for your K2 Group account. Staff accounts continue to an authentication code."
+      lede="Use an email address or username with the account password. Staff accounts continue to an authentication code."
     >
       <form onSubmit={(event) => void onSubmit(event)}>
         {mfaRequired ? (
@@ -64,9 +69,8 @@ export default function LoginPage(): ReactElement {
         ) : (
           <>
             <label>
-              Email
+              Email or username
               <input
-                type="email"
                 autoComplete="username"
                 value={email}
                 onChange={(event) => {

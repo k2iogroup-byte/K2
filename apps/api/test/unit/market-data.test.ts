@@ -202,6 +202,172 @@ describe('market data engine', () => {
     expect(process.memoryUsage().heapUsed - before).toBeLessThan(80 * 1024 * 1024);
   });
 
+  it('aggregates every supported timeframe, including gaps and invalid trades', async () => {
+    const engine = new MarketDataEngine(
+      { providerId: 'test-fixture', priceOrigin: 'TEST_FIXTURE' },
+      [equity],
+    );
+    const buckets: Record<string, string> = {
+      '1m': '2026-11-13T15:07:00.000Z',
+      '5m': '2026-11-13T15:05:00.000Z',
+      '15m': '2026-11-13T15:00:00.000Z',
+      '1h': '2026-11-13T15:00:00.000Z',
+      '4h': '2026-11-13T12:00:00.000Z',
+      '1d': '2026-11-13T00:00:00.000Z',
+    };
+    const samples = [
+      { id: 'a', price: '10.00', quantity: '2', at: '2026-11-13T15:07:10.000Z', sequence: 1 },
+      { id: 'b', price: '12.50', quantity: '3', at: '2026-11-13T15:07:40.000Z', sequence: 2 },
+      { id: 'c', price: '11.00', quantity: '1', at: '2026-11-13T15:07:50.000Z', sequence: 4 },
+      { id: 'd', price: '9.00', quantity: '4', at: '2026-11-14T00:00:05.000Z', sequence: 5 },
+    ];
+    for (const sample of samples) {
+      const received = new Date(sample.at);
+      expect(
+        (
+          await engine.ingest(
+            {
+              kind: 'trade',
+              providerEventId: sample.id,
+              providerSymbol: 'test',
+              price: sample.price,
+              quantity: sample.quantity,
+              sourceTimestamp: sample.at,
+              sequence: sample.sequence,
+            },
+            received,
+          )
+        ).status,
+      ).toBe('accepted');
+    }
+    const duplicate = await engine.ingest(
+      {
+        kind: 'trade',
+        providerEventId: 'b',
+        providerSymbol: 'test',
+        price: '1.00',
+        quantity: '9',
+        sourceTimestamp: '2026-11-13T15:07:41.000Z',
+        sequence: 3,
+      },
+      new Date('2026-11-13T15:07:41.000Z'),
+    );
+    expect(duplicate.status).toBe('duplicate');
+    const backwards = await engine.ingest(
+      {
+        kind: 'trade',
+        providerEventId: 'old',
+        providerSymbol: 'test',
+        price: '8.00',
+        quantity: '1',
+        sourceTimestamp: '2026-11-13T15:07:01.000Z',
+        sequence: 6,
+      },
+      new Date('2026-11-13T15:08:00.000Z'),
+    );
+    expect(backwards.status === 'rejected' && backwards.reason).toBe('out_of_order');
+    const invalidPrice = await engine.ingest(
+      {
+        kind: 'trade',
+        providerEventId: 'bad-price',
+        providerSymbol: 'test',
+        price: '0',
+        quantity: '1',
+        sourceTimestamp: '2026-11-14T00:01:00.000Z',
+        sequence: 7,
+      },
+      new Date('2026-11-14T00:01:00.000Z'),
+    );
+    expect(invalidPrice.status === 'rejected' && invalidPrice.reason).toBe('invalid');
+    const invalidVolume = await engine.ingest(
+      {
+        kind: 'trade',
+        providerEventId: 'bad-volume',
+        providerSymbol: 'test',
+        price: '10.00',
+        quantity: '-1',
+        sourceTimestamp: '2026-11-14T00:02:00.000Z',
+        sequence: 8,
+      },
+      new Date('2026-11-14T00:02:00.000Z'),
+    );
+    expect(invalidVolume.status === 'rejected' && invalidVolume.reason).toBe('invalid');
+
+    for (const timeframe of ['1m', '5m', '15m', '1h', '4h', '1d'] as const) {
+      expect(bucketStart(new Date('2026-11-13T15:07:40.000Z'), timeframe).toISOString()).toBe(
+        buckets[timeframe],
+      );
+    }
+    const minute = engine.barsFor('TEST', '1m');
+    expect(minute.map((bar) => bar.bucketStart)).toEqual([
+      '2026-11-13T15:07:00.000Z',
+      '2026-11-14T00:00:00.000Z',
+    ]);
+    expect(minute[0]).toMatchObject({
+      open: '10.00',
+      high: '12.50',
+      low: '10.00',
+      close: '11.00',
+      volume: '6.00000000',
+      tradeCount: 3,
+      priceOrigin: 'TEST_FIXTURE',
+    });
+    expect(engine.barsFor('TEST', '15m')).toHaveLength(2);
+    expect(engine.barsFor('TEST', '1h')[0]).toMatchObject({
+      open: '10.00',
+      high: '12.50',
+      low: '10.00',
+      close: '11.00',
+      tradeCount: 3,
+    });
+    expect(engine.barsFor('TEST', '4h')[0]?.bucketStart).toBe('2026-11-13T12:00:00.000Z');
+    expect(engine.barsFor('TEST', '1d')).toHaveLength(2);
+    expect(engine.barsFor('TEST', '1d')[0]?.bucketStart).toBe('2026-11-13T00:00:00.000Z');
+    expect(engine.barsFor('TEST', '1d')[1]?.bucketStart).toBe('2026-11-14T00:00:00.000Z');
+    expect(engine.barsFor('TEST', '5m')[0]?.volume).toBe('6.00000000');
+  });
+
+  it('measures in-process fan-out without treating it as trader capacity', async () => {
+    const engine = new MarketDataEngine(
+      { providerId: 'test-fixture', priceOrigin: 'TEST_FIXTURE' },
+      [equity],
+    );
+    const subscribers = 32;
+    const events = 1_000;
+    const counts = Array.from({ length: subscribers }, () => 0);
+    for (let index = 0; index < subscribers; index += 1) {
+      const cursor = index;
+      engine.subscribe((event) => {
+        if (event.type !== 'quote') return;
+        counts[cursor] = (counts[cursor] ?? 0) + 1;
+        expect(event.liveMarketData).toBe(false);
+      });
+    }
+    const started = performance.now();
+    const before = process.memoryUsage().heapUsed;
+    let errors = 0;
+    const start = new Date('2026-11-13T15:00:00.000Z');
+    for (let sequence = 1; sequence <= events; sequence += 1) {
+      const at = new Date(start.getTime() + sequence);
+      const result = await engine.ingest(
+        quote(sequence, { sourceTimestamp: at.toISOString(), bid: '10.00', ask: '10.01' }),
+        at,
+      );
+      if (result.status !== 'accepted') errors += 1;
+    }
+    const elapsedMs = performance.now() - started;
+    expect(errors).toBe(0);
+    expect(counts.every((count) => count === events)).toBe(true);
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(80 * 1024 * 1024);
+    expect(elapsedMs).toBeLessThan(20_000);
+    expect({
+      subscribers,
+      events,
+      errors,
+      elapsedMs: Math.round(elapsedMs),
+    }).toMatchObject({ subscribers: 32, events: 1_000, errors: 0 });
+  });
+
   it('keeps the fixture provider off the network', () => {
     expect(createProvider('disconnected')).toBeNull();
     const provider = createProvider('test-fixture');

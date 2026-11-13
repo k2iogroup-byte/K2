@@ -92,6 +92,7 @@ Source date for all Part A entries: founder brief as received for the documentat
 | D-073 | Binance public WebSocket possible for crypto; US equities provider after licensing/redistribution review; no fabricated prices; explicit stale/disconnected status. | 13 | CONFIRMED |
 | D-074 | Initial ~1,000 registered traders; growth toward ~10,000; do not assume all are concurrently active; prepare performance and load-testing strategy. | 14 | CONFIRMED |
 | D-075 | Security essential from the beginning, covering the fourteen areas in SECURITY_REQUIREMENTS §1; never store credentials in GitHub source. | 15 | CONFIRMED |
+| D-076 | Copy trading is prohibited for Challenge and Funded Simulation. A confirmed violation blocks the affected account automatically. Similar trades alone are not sufficient; multiple independent signals and retained evidence are required. 100% detection is not guaranteed. Recorded from the 2026-11-14 correction task. The detection engine is not implemented. | Correction task §6 | CONFIRMED |
 
 ---
 

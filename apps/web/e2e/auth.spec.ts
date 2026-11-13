@@ -12,8 +12,16 @@ test('registers, verifies email, and signs in', async ({ page }) => {
   const password = 'correct-horse-battery';
 
   await page.goto('/register');
+  await page.getByLabel('First name').fill('Ada');
+  await page.getByLabel('Last name').fill('Trader');
+  await page.getByLabel('Username').fill(`ada${randomUUID().replace(/-/g, '')}`.slice(0, 32));
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
+  await page.getByLabel('Country').fill('United States');
+  await page.getByLabel('City').fill('Chicago');
+  await page.getByLabel('Street address').fill('1 Market Street');
+  await page.getByLabel('Postal code').fill('60601');
+  await page.getByLabel('Phone').fill('+1 415 555 2671');
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page.getByText('verification message has been requested')).toBeVisible();
 
@@ -35,7 +43,7 @@ test('registers, verifies email, and signs in', async ({ page }) => {
   await expect(page.getByText('Email verified')).toBeVisible();
 
   await page.goto('/login');
-  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Email or username').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('heading', { name: 'Account security' })).toBeVisible();

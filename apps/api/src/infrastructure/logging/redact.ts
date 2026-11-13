@@ -17,6 +17,10 @@ export const REDACT_CENSOR = '[REDACTED]';
 
 export const REDACT_PATHS = [
   'password',
+  'phone',
+  'phoneE164',
+  'streetAddress',
+  'postalCode',
   'currentPassword',
   'newPassword',
   'token',
@@ -32,6 +36,10 @@ export const REDACT_PATHS = [
   'authorization',
   'cookie',
   '*.password',
+  '*.phone',
+  '*.phoneE164',
+  '*.streetAddress',
+  '*.postalCode',
   '*.currentPassword',
   '*.newPassword',
   '*.token',

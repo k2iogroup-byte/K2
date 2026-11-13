@@ -17,6 +17,7 @@ import { createLogger } from '../../src/infrastructure/logging/logger.js';
 import { CaptureEmailSender } from '../../src/modules/auth/email.js';
 import { MemoryRateLimiter } from '../../src/modules/auth/rate-limit.js';
 import { marketDataEngine } from '../../src/modules/market-data/market-data-routes.js';
+import { registrationBody } from '../registration.js';
 import { validEnv } from '../valid-env.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -233,6 +234,19 @@ describe('module 04 market data', () => {
       });
     });
     expect(closed).toBe(1008);
+    const unverified = await registerTrader({ verify: false });
+    expect((await call(unverified.jar, '/market-data/quotes/TEST')).status).toBe(403);
+    const unverifiedSocket = new WebSocket(wsUrl, {
+      headers: {
+        cookie: [...unverified.jar.entries()].map(([name, value]) => `${name}=${value}`).join('; '),
+      },
+    });
+    const unverifiedClose = await new Promise<number>((resolve) => {
+      unverifiedSocket.once('close', (code) => {
+        resolve(code);
+      });
+    });
+    expect(unverifiedClose).toBe(1008);
   });
 });
 
@@ -272,17 +286,25 @@ async function socketMessages(
   return received;
 }
 
-async function registerTrader(): Promise<{ jar: Jar; userId: string }> {
+async function registerTrader(options?: {
+  verify?: boolean;
+}): Promise<{ jar: Jar; userId: string }> {
   const email = `user-${randomUUID()}@example.com`;
   const jar = new Map<string, string>();
   expect(
-    (await call(jar, '/auth/register', { body: { email, password: 'correct-horse-battery' } }))
-      .status,
+    (
+      await call(jar, '/auth/register', {
+        body: registrationBody(email, 'correct-horse-battery'),
+      })
+    ).status,
   ).toBe(202);
   expect(
     (await call(jar, '/auth/login', { body: { email, password: 'correct-horse-battery' } })).status,
   ).toBe(200);
   const me = (await (await call(jar, '/users/me')).json()) as { id: string };
+  if (options?.verify !== false) {
+    await pool.query(`UPDATE users SET email_verified_at = now() WHERE id = $1`, [me.id]);
+  }
   return { jar, userId: me.id };
 }
 

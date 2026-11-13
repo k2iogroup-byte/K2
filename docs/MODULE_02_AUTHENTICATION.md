@@ -1,6 +1,19 @@
 # Module 02 — Authentication and user management
 
-**Status:** Implemented on `module-02-auth`. Not deployed. No Vercel or Railway resources were created.
+**Status:** Corrected on `cursor/correction-modules-02-04-82a0`. Not deployed. No Vercel or Railway resources were created.
+
+## Correction — 2026-11-14
+
+Founder-confirmed registration and access rules are now enforced. This section supersedes the earlier rows where they differ.
+
+- Public registration requires first name, last name, unique username, email, password, country, city, street address, postal code, and phone. Phone is normalised to E.164 (`+` and digits). Structural E.164 is checked. A numbering-plan library is not used, and SMS verification is not required.
+- A new trader stays unverified until the single-use hashed email token is consumed. Login is allowed. Challenge provisioning, own challenge-account routes, and market-data HTTP/WebSocket routes return `EMAIL_NOT_VERIFIED`. There is no separate account-status value for this gate, and no route can set `email_verified_at` except successful token consumption or the existing staff-invitation and bootstrap paths, which already proved control of the mailbox.
+- Login accepts email and password, or username and password. Both use the same session, delay, and failure controls. Failures for a known account share one counter.
+- `external_identities` stores a future provider subject. It has no email column and no insert path. Matching email text does not link an account. Google OAuth is not implemented.
+- `staff.users.read` is held by `SUPPORT` and `ADMIN` only. It returns identity fields and omits phone and address. `staff.users.sensitive.read` is `ADMIN` only. A successful sensitive read is appended to `authentication_audit_events`. `FINANCE`, `RISK`, `TRADING_REVIEW`, `MANAGEMENT`, and `COMPLIANCE` do not receive either permission in this correction.
+- `POST /staff/users/:id/mfa/reset` locks the target and refuses an account that has no staff role. A refused reset does not disable factors or revoke sessions. The refusal is audited.
+- Role and status changes take a transaction advisory lock, then read the target roles under row locks. The last active `ADMIN` check uses those locked rows. Two concurrent removals of the only two administrators leave one administrator.
+- The API process uses PostgreSQL `rate_limit_buckets` and `rate_limit_failures` unless a test injects the in-memory limiter. Limits are shared by API processes that use the same database. Redis was not added. Unit tests of the in-memory limiter still describe the window arithmetic. Untouched rate-limit rows are not purged by a scheduled job.
 
 This document is the implementation record. The proposed identity sketch in [API_SPECIFICATION.md](./API_SPECIFICATION.md) and [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) stays proposed. Where this module differs, this file is the implemented contract.
 
@@ -47,7 +60,8 @@ Every role receives `profile.read`, `profile.update`, `session.list`, `session.r
 
 | Permission                                                                     | Who has it            |
 | ------------------------------------------------------------------------------ | --------------------- |
-| `staff.users.read`                                                             | Every staff role      |
+| `staff.users.read`                                                             | `SUPPORT`, `ADMIN`    |
+| `staff.users.sensitive.read`                                                   | `ADMIN` only          |
 | `audit.read`                                                                   | `COMPLIANCE`, `ADMIN` |
 | `staff.invite`, `staff.roles.assign`, `staff.status.change`, `staff.mfa.reset` | `ADMIN` only          |
 
@@ -81,7 +95,7 @@ These are not founder business rules. They are the security parameters used beca
 4. Cookies: HttpOnly session, `Secure` outside development, `SameSite=Lax`, `Path=/`.
 5. CSRF header plus a session-bound double-submit token.
 6. CORS stays on the configured origin list, with credentials, and now allows `GET`, `POST`, `PATCH`, `DELETE`, and `OPTIONS`. `*` is still rejected.
-7. Rate limits live in the API process memory. They are not shared across future replicas. Redis was not added.
+7. Production rate limits are rows in PostgreSQL, locked per key. They are shared by API processes that use the same database and survive a process restart. Redis was not added. Tests may still inject the in-memory limiter. Multi-instance deployment is not blocked by process-local limits. A scheduled purge of untouched keys is not implemented.
 8. Login and reset responses do not reveal whether an email exists. A correct password on a suspended or closed account returns one message for both statuses.
 9. Login replaces any presented session. A revoked or expired hash cannot be reused.
 10. Authorization is loaded from PostgreSQL on each request. Object checks: session revoke and profile updates are limited to the signed-in user. A missing or foreign session id is HTTP 404.
@@ -122,7 +136,9 @@ Do not commit these variables.
 - Third-party SSO and a separate staff origin.
 - WebAuthn, SMS, breached-password lists, and new-device mail.
 - KYC, payments, Challenges, trading, payouts, and step-up enforcement on those flows.
-- A distributed rate-limit store.
+- Google OAuth and any automatic email-based account link.
+- A numbering-plan check beyond structural E.164.
+- A scheduled purge of untouched rate-limit rows.
 - Production deployment.
 
 ## Files

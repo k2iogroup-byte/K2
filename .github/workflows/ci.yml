@@ -9,6 +9,7 @@ on:
       - module-03-challenge-accounts
       - module-04-market-data
       - ci-run-on-main
+      - cursor/correction-modules-02-04-82a0
       - main
 
 permissions:
@@ -84,3 +85,48 @@ jobs:
         run: npm ci
       - name: Integration tests
         run: npm run test:integration
+
+  browser:
+    name: Playwright
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: k2
+          POSTGRES_PASSWORD: k2_ci_test_password
+          POSTGRES_DB: k2_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U k2 -d k2_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: development
+      HOST: 127.0.0.1
+      PORT: 4000
+      LOG_LEVEL: info
+      SERVICE_NAME: k2-api
+      SERVICE_VERSION: 0.1.0
+      DATABASE_URL: postgresql://k2:k2_ci_test_password@localhost:5432/k2_test
+      TEST_DATABASE_URL: postgresql://k2:k2_ci_test_password@localhost:5432/k2_test
+      DATABASE_POOL_MAX: 4
+      DATABASE_SSL: disable
+      CORS_ORIGINS: http://127.0.0.1:3000
+      EMAIL_DELIVERY: capture
+      MARKET_DATA_MODE: disconnected
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:4000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Playwright
+        run: npm run test:e2e

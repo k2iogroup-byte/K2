@@ -52,6 +52,7 @@ export async function createInitialAdmin(
       role: 'ADMIN',
       grantedBy: null,
       emailVerified: true,
+      profile: null,
     });
     await repository.insertAudit(
       {

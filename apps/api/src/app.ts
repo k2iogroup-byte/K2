@@ -14,7 +14,7 @@ import { registerWebSocket } from './infrastructure/ws/ws-route.js';
 import { registerAccountRoutes } from './modules/accounts/account-routes.js';
 import { registerAuthRoutes } from './modules/auth/auth-routes.js';
 import { createEmailSender, type EmailSender } from './modules/auth/email.js';
-import type { MemoryRateLimiter } from './modules/auth/rate-limit.js';
+import type { RateLimiter } from './modules/auth/rate-limit.js';
 import { registerHealthRoutes } from './modules/health/health-route.js';
 import { MarketDataEngine } from './modules/market-data/engine.js';
 import { registerMarketDataRoutes } from './modules/market-data/market-data-routes.js';
@@ -29,7 +29,7 @@ export type BuildAppOptions = {
   database: DatabaseProbe;
   pool?: pg.Pool;
   emailSender?: EmailSender;
-  limiter?: MemoryRateLimiter;
+  limiter?: RateLimiter;
   sleep?: (ms: number) => Promise<void>;
   logger?: FastifyServerOptions['logger'];
 };

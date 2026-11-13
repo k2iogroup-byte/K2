@@ -13,6 +13,7 @@ export const DEFAULT_STALE_AFTER_MS = {
 } as const;
 
 const SOURCE_SKEW_MS = 5_000;
+const EVENT_ID_LIMIT = 4_096;
 const TIMEFRAMES: readonly BarTimeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
 const TIMEFRAME_MS: Record<BarTimeframe, number> = {
   '1m': 60_000,
@@ -132,6 +133,7 @@ type InstrumentState = {
   lastReceivedMs: number | null;
   degraded: boolean;
   eventIds: Set<string>;
+  eventOrder: string[];
 };
 
 export type MarketDataSink = {
@@ -187,6 +189,7 @@ export class MarketDataEngine {
       lastReceivedMs: null,
       degraded: false,
       eventIds: new Set(),
+      eventOrder: [],
     });
   }
 
@@ -258,7 +261,7 @@ export class MarketDataEngine {
     try {
       if (event.kind === 'quote') {
         const quote = this.normaliseQuote(event, instrument, receivedAt);
-        instrument.eventIds.add(event.providerEventId);
+        rememberEvent(instrument, event.providerEventId);
         instrument.lastSequence = event.sequence;
         instrument.lastSourceMs = sourceMs;
         instrument.lastReceivedMs = receivedMs;
@@ -278,7 +281,7 @@ export class MarketDataEngine {
         return { status: 'accepted', kind: 'quote' };
       }
       const trade = this.normaliseTrade(event, instrument, receivedAt);
-      instrument.eventIds.add(event.providerEventId);
+      rememberEvent(instrument, event.providerEventId);
       instrument.lastSequence = event.sequence;
       instrument.lastSourceMs = sourceMs;
       instrument.lastReceivedMs = receivedMs;
@@ -459,6 +462,14 @@ export class MarketDataEngine {
   private now(): Date {
     return this.options.clock?.() ?? new Date();
   }
+}
+
+function rememberEvent(instrument: InstrumentState, eventId: string): void {
+  instrument.eventIds.add(eventId);
+  instrument.eventOrder.push(eventId);
+  if (instrument.eventOrder.length <= EVENT_ID_LIMIT) return;
+  const oldest = instrument.eventOrder.shift();
+  if (oldest !== undefined) instrument.eventIds.delete(oldest);
 }
 
 function decimalsNonPositive(value: string, scale: number): boolean {

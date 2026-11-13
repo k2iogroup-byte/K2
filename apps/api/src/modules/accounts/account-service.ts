@@ -491,9 +491,16 @@ export class AccountService {
         if (active !== true) {
           throw new AppError('CONFLICT', 409, 'The challenge product is not active');
         }
-        const status = await this.repository.lockUser(client, input.userId);
-        if (!status) throw new AppError('NOT_FOUND', 404, 'Not found');
-        if (status !== 'ACTIVE') {
+        const holder = await this.repository.lockUser(client, input.userId);
+        if (!holder) throw new AppError('NOT_FOUND', 404, 'Not found');
+        if (!holder.emailVerified) {
+          throw new AppError(
+            'EMAIL_NOT_VERIFIED',
+            403,
+            'Verify your email before a challenge account can be provisioned',
+          );
+        }
+        if (holder.status !== 'ACTIVE') {
           throw new AppError('CONFLICT', 409, 'The user cannot receive a challenge account');
         }
         const inserted = await this.repository.insertEvidence(client, {

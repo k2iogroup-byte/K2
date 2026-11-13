@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { Secret, TOTP } from 'otpauth';
 import pg from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import { createInitialAdmin } from '../../src/cli/bootstrap-staff.js';
@@ -22,6 +22,7 @@ import {
 } from '../../src/modules/accounts/integration-ports.js';
 import { CaptureEmailSender } from '../../src/modules/auth/email.js';
 import { MemoryRateLimiter } from '../../src/modules/auth/rate-limit.js';
+import { registrationBody } from '../registration.js';
 import { validEnv } from '../valid-env.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -33,6 +34,7 @@ if (!new URL(databaseUrl).pathname.replace(/^\//, '').endsWith('_test')) {
 }
 
 const pool = new pg.Pool({ connectionString: databaseUrl, max: 4 });
+const limiter = new MemoryRateLimiter();
 let baseUrl = '';
 let appClose: (() => Promise<void>) | null = null;
 const accounts = new AccountService(new AccountRepository(pool));
@@ -58,7 +60,7 @@ beforeAll(async () => {
     config,
     pool,
     emailSender: new CaptureEmailSender(null),
-    limiter: new MemoryRateLimiter(),
+    limiter,
     database: new PgDatabaseProbe(pool, createLogger(config)),
     logger: false,
   });
@@ -69,6 +71,10 @@ beforeAll(async () => {
   appClose = async () => {
     await app.close();
   };
+});
+
+beforeEach(() => {
+  limiter.clear();
 });
 
 afterAll(async () => {
@@ -145,6 +151,21 @@ describe('module 03 challenge accounts', () => {
       expect(stage1.get(key)).toMatchObject({ status: 'UNRESOLVED', numericValue: null });
       expect(stage2.get(key)).toMatchObject({ status: 'UNRESOLVED', numericValue: null });
     }
+  });
+
+  it('does not provision a challenge for an unverified trader', async () => {
+    const owner = await registerTrader({ verify: false });
+    const product = await openProduct('10000.00');
+    await expect(
+      accounts.provisionFromVerifiedPurchase(
+        purchase(owner.userId, product.priceVersionId, '129.00'),
+      ),
+    ).rejects.toMatchObject({ code: 'EMAIL_NOT_VERIFIED' });
+    const rows = await pool.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM trading_accounts WHERE user_id = $1',
+      [owner.userId],
+    );
+    expect(rows.rows[0]?.count).toBe(0);
   });
 
   it('provisions only from matching M-08 evidence and keeps the purchase immutable', async () => {
@@ -494,17 +515,25 @@ function purchase(
   };
 }
 
-async function registerTrader(): Promise<{ jar: Jar; userId: string }> {
+async function registerTrader(options?: {
+  verify?: boolean;
+}): Promise<{ jar: Jar; userId: string }> {
   const email = `user-${randomUUID()}@example.com`;
   const jar = new Map<string, string>();
   expect(
-    (await call(jar, '/auth/register', { body: { email, password: 'correct-horse-battery' } }))
-      .status,
+    (
+      await call(jar, '/auth/register', {
+        body: registrationBody(email, 'correct-horse-battery'),
+      })
+    ).status,
   ).toBe(202);
   expect(
     (await call(jar, '/auth/login', { body: { email, password: 'correct-horse-battery' } })).status,
   ).toBe(200);
   const me = (await (await call(jar, '/users/me')).json()) as { id: string };
+  if (options?.verify !== false) {
+    await pool.query(`UPDATE users SET email_verified_at = now() WHERE id = $1`, [me.id]);
+  }
   return { jar, userId: me.id };
 }
 

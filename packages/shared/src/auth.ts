@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { normalisePhone } from './phone.js';
+
 export const ACCOUNT_STATUSES = ['ACTIVE', 'SUSPENDED', 'CLOSED'] as const;
 export const ROLE_CODES = [
   'TRADER',
@@ -36,21 +38,85 @@ const displayNameSchema = z
   .max(80)
   .regex(/^[\p{L}\p{N} .,'-]+$/u);
 
+const personNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(80)
+  .regex(/^[\p{L}][\p{L} .'-]*$/u);
+const countrySchema = z
+  .string()
+  .trim()
+  .min(2)
+  .max(56)
+  .regex(/^[\p{L}][\p{L} .'-]*$/u);
+const citySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(80)
+  .regex(/^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u);
+const streetSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .regex(/^[\p{L}\p{N}][\p{L}\p{N} .,'#/()-]*$/u);
+const postalSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(16)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9 -]*$/);
+export const usernameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[a-z0-9](?:[a-z0-9._-]{1,30}[a-z0-9])$/);
+export const phoneSchema = z
+  .string()
+  .trim()
+  .min(8)
+  .max(32)
+  .superRefine((value, context) => {
+    if (normalisePhone(value) === null) {
+      context.addIssue({ code: 'custom', message: 'Invalid value' });
+    }
+  })
+  .transform((value) => normalisePhone(value) ?? value);
+
 export const registerRequestSchema = z
   .strictObject({
+    firstName: personNameSchema,
+    lastName: personNameSchema,
+    username: usernameSchema,
     email: emailSchema,
     password: passwordSchema,
+    country: countrySchema,
+    city: citySchema,
+    streetAddress: streetSchema,
+    postalCode: postalSchema,
+    phone: phoneSchema,
   })
   .superRefine((value, context) => {
-    if (value.password.toLowerCase() === value.email) {
+    const password = value.password.toLowerCase();
+    if (password === value.email || password === value.username) {
       context.addIssue({ code: 'custom', path: ['password'], message: 'Invalid value' });
     }
   });
 
-export const loginRequestSchema = z.strictObject({
-  email: emailSchema,
-  password: z.string().min(1).max(128),
-});
+const loginPasswordSchema = z.string().min(1).max(128);
+
+export const loginRequestSchema = z.union([
+  z.strictObject({
+    email: emailSchema,
+    password: loginPasswordSchema,
+  }),
+  z.strictObject({
+    username: usernameSchema,
+    password: loginPasswordSchema,
+  }),
+]);
 
 export const emailRequestSchema = z.strictObject({
   email: emailSchema,
@@ -161,9 +227,10 @@ export const passwordResultResponseSchema = z.strictObject({
   notification: z.enum(['sent', 'unavailable']),
 });
 
-export const profileResponseSchema = z.strictObject({
-  id: z.uuid(),
-  email: z.email(),
+const profileIdentitySchema = {
+  username: z.string().nullable(),
+  firstName: z.string().nullable(),
+  lastName: z.string().nullable(),
   displayName: z.string().nullable(),
   status: accountStatusSchema,
   emailVerified: z.boolean(),
@@ -171,6 +238,34 @@ export const profileResponseSchema = z.strictObject({
   createdAt: z.string(),
   roles: z.array(roleCodeSchema),
   mfaEnrolled: z.boolean(),
+};
+
+const sensitiveIdentitySchema = {
+  country: z.string().nullable(),
+  city: z.string().nullable(),
+  streetAddress: z.string().nullable(),
+  postalCode: z.string().nullable(),
+  phone: z.string().nullable(),
+};
+
+export const profileResponseSchema = z.strictObject({
+  id: z.uuid(),
+  email: z.email(),
+  ...profileIdentitySchema,
+  ...sensitiveIdentitySchema,
+});
+
+export const staffUserResponseSchema = z.strictObject({
+  id: z.uuid(),
+  email: z.email(),
+  ...profileIdentitySchema,
+});
+
+export const sensitiveStaffProfileResponseSchema = z.strictObject({
+  id: z.uuid(),
+  email: z.email(),
+  ...profileIdentitySchema,
+  ...sensitiveIdentitySchema,
 });
 
 export const authMeResponseSchema = z.strictObject({
@@ -214,8 +309,6 @@ export const mfaVerifiedResponseSchema = z.strictObject({
   status: z.literal('verified'),
 });
 
-export const staffUserResponseSchema = profileResponseSchema;
-
 export const invitedResponseSchema = z.strictObject({
   status: z.literal('invited'),
 });
@@ -247,5 +340,8 @@ export const auditListResponseSchema = z.strictObject({
 export type AccountStatus = z.infer<typeof accountStatusSchema>;
 export type RoleCode = z.infer<typeof roleCodeSchema>;
 export type StaffRoleCode = z.infer<typeof staffRoleSchema>;
+export type RegisterRequest = z.infer<typeof registerRequestSchema>;
 export type ProfileResponse = z.infer<typeof profileResponseSchema>;
+export type StaffUserResponse = z.infer<typeof staffUserResponseSchema>;
+export type SensitiveStaffProfileResponse = z.infer<typeof sensitiveStaffProfileResponseSchema>;
 export type AuthMeResponse = z.infer<typeof authMeResponseSchema>;

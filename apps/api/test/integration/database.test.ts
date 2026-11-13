@@ -74,10 +74,10 @@ describe('database connectivity and migrations', () => {
     await before.app.close();
 
     const applied = await migrateUp(pool, directory);
-    expect(applied).toEqual(['0001', '0002', '0003', '0004']);
+    expect(applied).toEqual(['0001', '0002', '0003', '0004', '0005']);
     expect(await migrateUp(pool, directory)).toEqual([]);
     const status = await migrationStatus(pool, directory);
-    expect(status.map((entry) => entry.version)).toEqual(['0001', '0002', '0003', '0004']);
+    expect(status.map((entry) => entry.version)).toEqual(['0001', '0002', '0003', '0004', '0005']);
     expect(status.every((entry) => entry.state === 'applied')).toBe(true);
 
     const runtime = await startServer(
@@ -100,6 +100,7 @@ describe('database connectivity and migrations', () => {
     });
     await worker.close();
 
+    expect(await migrateDown(pool, directory)).toBe('0005');
     expect(await migrateDown(pool, directory)).toBe('0004');
     expect(await migrateDown(pool, directory)).toBe('0003');
     expect(await migrateDown(pool, directory)).toBe('0002');
@@ -112,7 +113,7 @@ describe('database connectivity and migrations', () => {
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'",
     );
     expect(tables.rows.map((row) => row.table_name).sort()).toEqual(['schema_migrations']);
-    expect(await migrateUp(pool, directory)).toEqual(['0001', '0002', '0003', '0004']);
+    expect(await migrateUp(pool, directory)).toEqual(['0001', '0002', '0003', '0004', '0005']);
   });
 
   it('rolls back a failed migration and refuses a changed checksum', async () => {

@@ -295,12 +295,17 @@ export class AccountRepository {
     );
   }
 
-  async lockUser(client: pg.PoolClient, userId: string): Promise<string | null> {
-    const result = await client.query<{ status: string }>(
-      `SELECT status FROM users WHERE id = $1 FOR UPDATE`,
+  async lockUser(
+    client: pg.PoolClient,
+    userId: string,
+  ): Promise<{ status: string; emailVerified: boolean } | null> {
+    const result = await client.query<{ status: string; email_verified_at: Date | null }>(
+      `SELECT status, email_verified_at FROM users WHERE id = $1 FOR UPDATE`,
       [userId],
     );
-    return result.rows[0]?.status ?? null;
+    const row = result.rows[0];
+    if (!row) return null;
+    return { status: row.status, emailVerified: row.email_verified_at !== null };
   }
 
   async lockPrice(client: pg.PoolClient, priceVersionId: string): Promise<LockedPrice | null> {

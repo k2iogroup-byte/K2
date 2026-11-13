@@ -9,6 +9,10 @@ import { authFetch, errorMessage } from '../../lib/auth-client';
 type Profile = {
   id: string;
   email: string;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
   displayName: string | null;
   status: string;
   emailVerified: boolean;
@@ -167,10 +171,28 @@ export default function AccountPage(): ReactElement {
         <>
           <section className="panel">
             <h2>Profile</h2>
+            {profile.emailVerified ? null : (
+              <p className="alert bad" role="status">
+                Email verification is still required. Challenge purchase and market data stay locked
+                until the verification link is used.
+              </p>
+            )}
             <dl>
+              <div>
+                <dt>Name</dt>
+                <dd>{[profile.firstName, profile.lastName].filter(Boolean).join(' ') || '—'}</dd>
+              </div>
+              <div>
+                <dt>Username</dt>
+                <dd>{profile.username ?? '—'}</dd>
+              </div>
               <div>
                 <dt>Email</dt>
                 <dd>{profile.email}</dd>
+              </div>
+              <div>
+                <dt>Phone</dt>
+                <dd>{profile.phone ?? '—'}</dd>
               </div>
               <div>
                 <dt>Status</dt>

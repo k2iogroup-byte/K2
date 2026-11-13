@@ -27,8 +27,11 @@ export type {
   AccountStatus,
   AuthMeResponse,
   ProfileResponse,
+  RegisterRequest,
   RoleCode,
+  SensitiveStaffProfileResponse,
   StaffRoleCode,
+  StaffUserResponse,
 } from './auth.js';
 export {
   acceptedResponseSchema,
@@ -51,6 +54,7 @@ export {
   mfaVerifiedResponseSchema,
   passwordResultResponseSchema,
   passwordSchema,
+  phoneSchema,
   profilePatchSchema,
   profileResponseSchema,
   recoveryCodeRequestSchema,
@@ -61,6 +65,7 @@ export {
   roleAssignmentRequestSchema,
   roleCodeSchema,
   rolesUpdatedResponseSchema,
+  sensitiveStaffProfileResponseSchema,
   sessionListResponseSchema,
   STAFF_ROLE_CODES,
   staffRoleSchema,
@@ -68,6 +73,7 @@ export {
   statusChangeRequestSchema,
   statusUpdatedResponseSchema,
   tokenRequestSchema,
+  usernameSchema,
   verifiedResponseSchema,
 } from './auth.js';
 export {

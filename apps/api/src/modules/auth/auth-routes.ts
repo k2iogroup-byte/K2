@@ -23,7 +23,9 @@ import {
   revokedResponseSchema,
   roleAssignmentRequestSchema,
   rolesUpdatedResponseSchema,
+  sensitiveStaffProfileResponseSchema,
   sessionListResponseSchema,
+  staffUserResponseSchema,
   statusChangeRequestSchema,
   statusUpdatedResponseSchema,
   tokenRequestSchema,
@@ -47,8 +49,8 @@ import {
   SESSION_COOKIE,
 } from './cookies.js';
 import type { EmailSender } from './email.js';
-import type { MemoryRateLimiter } from './rate-limit.js';
-import { MemoryRateLimiter as DefaultLimiter } from './rate-limit.js';
+import { PostgresRateLimiter } from './postgres-rate-limit.js';
+import type { RateLimiter } from './rate-limit.js';
 import { PERMISSIONS, requirePermission, requireStaffAccess } from './rbac.js';
 import {
   noStore,
@@ -66,7 +68,7 @@ export type AuthRouteOptions = {
   config: AppConfig;
   pool: pg.Pool;
   emailSender: EmailSender;
-  limiter?: MemoryRateLimiter;
+  limiter?: RateLimiter;
   sleep?: (ms: number) => Promise<void>;
 };
 
@@ -74,7 +76,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
   const service = new AuthService(
     new IdentityRepository(options.pool),
     options.emailSender,
-    options.limiter ?? new DefaultLimiter(),
+    options.limiter ?? new PostgresRateLimiter(options.pool),
     options.config,
     options.sleep,
     {
@@ -89,7 +91,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     parseWithSchema(emptyQuerySchema, request.query);
     const auth = await requireRead(service, request);
     return sendJson(reply, 200, authMeResponseSchema, {
-      profile: service.profileFrom(auth),
+      profile: await service.ownProfile(auth.userId),
       staff: auth.staff,
       mfaSatisfied: auth.mfaSatisfied,
       permissions: [...auth.permissions],
@@ -112,7 +114,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     parseWithSchema(emptyQuerySchema, request.query);
     const auth = await requireRead(service, request);
     requirePermission(auth, PERMISSIONS.profileRead);
-    return sendJson(reply, 200, profileResponseSchema, service.profileFrom(auth));
+    return sendJson(reply, 200, profileResponseSchema, await service.ownProfile(auth.userId));
   });
 
   app.get('/staff/users/:id', async (request, reply) => {
@@ -121,7 +123,21 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     const auth = await requireRead(service, request);
     requireStaffAccess(auth, PERMISSIONS.staffUsersRead);
     const params = parseWithSchema(idParamsSchema, request.params);
-    return sendJson(reply, 200, profileResponseSchema, await service.staffProfile(params.id));
+    return sendJson(reply, 200, staffUserResponseSchema, await service.staffProfile(params.id));
+  });
+
+  app.get('/staff/users/:id/sensitive', async (request, reply) => {
+    noStore(reply);
+    parseWithSchema(emptyQuerySchema, request.query);
+    const auth = await requireRead(service, request);
+    requireStaffAccess(auth, PERMISSIONS.staffUsersSensitiveRead);
+    const params = parseWithSchema(idParamsSchema, request.params);
+    return sendJson(
+      reply,
+      200,
+      sensitiveStaffProfileResponseSchema,
+      await service.sensitiveStaffProfile(auth, params.id, requestMeta(request)),
+    );
   });
 
   app.get('/staff/audit', async (request, reply) => {
@@ -137,7 +153,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     requireMarker(request);
     parseWithSchema(emptyQuerySchema, request.query);
     const body = parseWithSchema(registerRequestSchema, request.body);
-    await service.register(body.email, body.password, requestMeta(request));
+    await service.register(body, requestMeta(request));
     return sendJson(reply, 202, acceptedResponseSchema, { status: 'accepted' });
   });
 
@@ -147,7 +163,9 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     parseWithSchema(emptyQuerySchema, request.query);
     const body = parseWithSchema(loginRequestSchema, request.body);
     const result = await service.login(
-      body.email,
+      'email' in body
+        ? { kind: 'email', email: body.email }
+        : { kind: 'username', username: body.username },
       body.password,
       requestMeta(request),
       readOpaqueCookie(request, SESSION_COOKIE),

@@ -1,6 +1,16 @@
 # Module 04 — Market data infrastructure
 
-**Status:** Implemented on `module-04-market-data`. Not deployed. No vendor account, API key, or live market connection is configured.
+**Status:** Corrected on `cursor/correction-modules-02-04-82a0`. Not deployed. No vendor account, API key, or live market connection is configured.
+
+## Correction — 2026-11-14
+
+Quotes, bars, and `/ws/market-data` require a verified email in addition to `market_data.read`. Feed health stays on `/internal/market-data/health` for staff with MFA and `market_data.health`.
+
+Bar aggregation is covered for `1m`, `5m`, `15m`, `1h`, `4h`, and `1d`: UTC bucket alignment, OHLCV, duplicate event ids, out-of-order trades, missing minutes (no invented bars), and non-positive price or volume. `1d` buckets start at 00:00 UTC. Exchange session calendars and holidays are not implemented.
+
+A WebSocket subscriber is removed on close, including when authentication finishes after the socket has already closed. A subscriber whose buffer exceeds 1 MiB is disconnected. Recent provider event ids are capped at 4,096 per instrument. Sequence checks still reject an older event after that cap.
+
+The unit suite sends 5,000 quotes to 4 in-process consumers and 1,000 quotes to 32 in-process consumers. Both assert ordered delivery, zero live-data claims, and heap growth under 80 MB. That is not a test of 10,000 concurrent traders. No WebSocket load of 10,000 sessions was run. Capacity for that population is not claimed.
 
 This file is the implemented contract. The proposed market-data rows in [API_SPECIFICATION.md](./API_SPECIFICATION.md) and [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) stay proposed.
 
@@ -49,7 +59,7 @@ Raw ticks are not stored. `quote_snapshots` keeps one current row per instrument
 
 Consumers subscribe inside the API process. One provider connection feeds every subscriber. The WebSocket route `/ws/market-data` requires a session with `market_data.read`. The existing `/ws` ping route is unchanged.
 
-Redis, Kafka, and a second service were not added. The API already owns the WebSocket connections, and the planning capacity is about 1,000 registered traders with a smaller concurrent set. An in-process fan-out meets that shape. A separate bus would be justified only after a measured limit, which this module does not claim to have reached. The volume test sends 5,000 quotes to four in-process consumers and checks order, duplicates, and that the heap growth stays under 80 MB. It is not a production capacity test of 10,000 traders.
+Redis, Kafka, and a second service were not added. The API already owns the WebSocket connections, and the planning capacity is about 1,000 registered traders with a smaller concurrent set. An in-process fan-out meets that shape. A separate bus would be justified only after a measured limit, which this module does not claim to have reached. The volume test sends 5,000 quotes to four in-process consumers and checks order, duplicates, and that the heap growth stays under 80 MB. A second test sends 1,000 quotes to 32 consumers. Neither is a production capacity test of 10,000 traders.
 
 ## HTTP
 

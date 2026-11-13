@@ -10,6 +10,7 @@ export const PERMISSIONS = {
   passwordChange: 'password.change',
   mfaEnroll: 'mfa.enroll',
   staffUsersRead: 'staff.users.read',
+  staffUsersSensitiveRead: 'staff.users.sensitive.read',
   staffInvite: 'staff.invite',
   staffRolesAssign: 'staff.roles.assign',
   staffStatusChange: 'staff.status.change',
@@ -50,6 +51,7 @@ export function requireStaffAccess(auth: AuthContext, permission: string): void 
   if (!auth.staff) {
     throw new AppError('FORBIDDEN', 403, 'You do not have access to this action');
   }
+  requireVerifiedEmail(auth);
   if (!auth.mfaEnrolled) {
     throw new AppError(
       'MFA_ENROLLMENT_REQUIRED',
@@ -61,4 +63,14 @@ export function requireStaffAccess(auth: AuthContext, permission: string): void 
     throw new AppError('MFA_REQUIRED', 403, 'Staff multi-factor authentication is required');
   }
   requirePermission(auth, permission);
+}
+
+export function requireVerifiedEmail(auth: AuthContext): void {
+  if (auth.emailVerifiedAt === null) {
+    throw new AppError(
+      'EMAIL_NOT_VERIFIED',
+      403,
+      'Verify your email before using this part of the account',
+    );
+  }
 }

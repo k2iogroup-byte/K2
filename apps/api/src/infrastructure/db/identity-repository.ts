@@ -3,7 +3,7 @@ import { accountStatusSchema, roleCodeSchema } from '@k2/shared';
 import type pg from 'pg';
 
 export class UniqueViolation extends Error {
-  constructor() {
+  constructor(readonly constraint: string) {
     super('Unique constraint violation');
     this.name = 'UniqueViolation';
   }
@@ -55,6 +55,14 @@ export type ListedSession = {
 export type ProfileRecord = {
   id: string;
   email: string;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  country: string | null;
+  city: string | null;
+  streetAddress: string | null;
+  postalCode: string | null;
+  phoneE164: string | null;
   displayName: string | null;
   status: AccountStatus;
   emailVerifiedAt: Date | null;
@@ -96,6 +104,17 @@ export type AuditWrite = {
 
 type Db = pg.Pool | pg.PoolClient;
 
+type RegistrationProfile = {
+  firstName: string;
+  lastName: string;
+  username: string;
+  country: string;
+  city: string;
+  streetAddress: string;
+  postalCode: string;
+  phoneE164: string;
+};
+
 type NewUser = {
   email: string;
   passwordHash: string;
@@ -103,6 +122,7 @@ type NewUser = {
   role: RoleCode;
   grantedBy: string | null;
   emailVerified: boolean;
+  profile: RegistrationProfile | null;
 };
 
 export class IdentityRepository {
@@ -153,13 +173,56 @@ export class IdentityRepository {
     return (result.rowCount ?? 0) > 0;
   }
 
+  async findUserByUsername(username: string): Promise<CredentialUser | null> {
+    const result = await this.pool.query<{
+      id: string;
+      email: string;
+      status: string;
+      email_verified_at: Date | null;
+      password_hash: string;
+    }>(
+      `SELECT u.id, u.email, u.status, u.email_verified_at, c.password_hash
+       FROM users u
+       JOIN credentials c ON c.user_id = u.id
+       WHERE u.username = $1`,
+      [username],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      email: row.email,
+      status: parseStatus(row.status),
+      emailVerifiedAt: row.email_verified_at,
+      passwordHash: row.password_hash,
+    };
+  }
+
   async insertUser(client: pg.PoolClient, input: NewUser): Promise<string> {
     try {
+      const profile = input.profile;
       const user = await client.query<{ id: string }>(
-        `INSERT INTO users (email, email_verified_at)
-         VALUES ($1, CASE WHEN $2::boolean THEN now() ELSE NULL END)
+        `INSERT INTO users (
+           email, email_verified_at, first_name, last_name, username,
+           country, city, street_address, postal_code, phone_e164
+         )
+         VALUES (
+           $1, CASE WHEN $2::boolean THEN now() ELSE NULL END,
+           $3, $4, $5, $6, $7, $8, $9, $10
+         )
          RETURNING id`,
-        [input.email, input.emailVerified],
+        [
+          input.email,
+          input.emailVerified,
+          profile?.firstName ?? null,
+          profile?.lastName ?? null,
+          profile?.username ?? null,
+          profile?.country ?? null,
+          profile?.city ?? null,
+          profile?.streetAddress ?? null,
+          profile?.postalCode ?? null,
+          profile?.phoneE164 ?? null,
+        ],
       );
       const id = user.rows[0]?.id;
       if (!id) throw new Error('User insert did not return an id');
@@ -175,7 +238,7 @@ export class IdentityRepository {
       );
       return id;
     } catch (error) {
-      if (pgCode(error) === '23505') throw new UniqueViolation();
+      if (pgCode(error) === '23505') throw new UniqueViolation(pgConstraint(error));
       throw error;
     }
   }
@@ -202,6 +265,29 @@ export class IdentityRepository {
 
   async lockAdminRows(client: pg.PoolClient): Promise<void> {
     await client.query(`SELECT user_id FROM user_roles WHERE role_code = 'ADMIN' FOR UPDATE`);
+  }
+
+  async lockRoleChanges(client: pg.PoolClient): Promise<void> {
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext('k2.identity.role_changes'))`);
+  }
+
+  async currentRoles(client: pg.PoolClient, userId: string): Promise<RoleCode[]> {
+    const result = await client.query<{ role_code: string }>(
+      `SELECT role_code FROM user_roles WHERE user_id = $1 ORDER BY role_code FOR UPDATE`,
+      [userId],
+    );
+    return result.rows.map((row) => parseRole(row.role_code));
+  }
+
+  async userIsStaff(client: pg.PoolClient, userId: string): Promise<boolean> {
+    const result = await client.query<{ staff: boolean }>(
+      `SELECT COALESCE(bool_or(r.is_staff), false) AS staff
+       FROM user_roles ur
+       JOIN roles r ON r.code = ur.role_code
+       WHERE ur.user_id = $1`,
+      [userId],
+    );
+    return result.rows[0]?.staff === true;
   }
 
   async userHasRole(client: pg.PoolClient, userId: string, role: RoleCode): Promise<boolean> {
@@ -250,6 +336,14 @@ export class IdentityRepository {
     const result = await this.pool.query<{
       id: string;
       email: string;
+      username: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      country: string | null;
+      city: string | null;
+      street_address: string | null;
+      postal_code: string | null;
+      phone_e164: string | null;
       display_name: string | null;
       status: string;
       email_verified_at: Date | null;
@@ -257,7 +351,9 @@ export class IdentityRepository {
       roles: string[] | null;
       mfa_enrolled: boolean;
     }>(
-      `SELECT u.id, u.email, u.display_name, u.status, u.email_verified_at, u.created_at,
+      `SELECT u.id, u.email, u.username, u.first_name, u.last_name, u.country, u.city,
+              u.street_address, u.postal_code, u.phone_e164, u.display_name, u.status,
+              u.email_verified_at, u.created_at,
               COALESCE(
                 array_agg(DISTINCT ur.role_code) FILTER (WHERE ur.role_code IS NOT NULL),
                 ARRAY[]::text[]
@@ -277,6 +373,14 @@ export class IdentityRepository {
     return {
       id: row.id,
       email: row.email,
+      username: row.username,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      country: row.country,
+      city: row.city,
+      streetAddress: row.street_address,
+      postalCode: row.postal_code,
+      phoneE164: row.phone_e164,
       displayName: row.display_name,
       status: parseStatus(row.status),
       emailVerifiedAt: row.email_verified_at,
@@ -808,6 +912,14 @@ function pgCode(error: unknown): string | null {
     return typeof code === 'string' ? code : null;
   }
   return null;
+}
+
+function pgConstraint(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'constraint' in error) {
+    const constraint = error.constraint;
+    if (typeof constraint === 'string') return constraint;
+  }
+  return '';
 }
 
 function asMetadata(value: unknown): Record<string, string | number | boolean | null> {

@@ -14,7 +14,12 @@ import { z } from 'zod';
 import { AppError } from '../../infrastructure/http/errors.js';
 import { parseWithSchema } from '../../infrastructure/http/validation.js';
 import type { AuthService } from '../auth/auth-service.js';
-import { PERMISSIONS, requirePermission, requireStaffAccess } from '../auth/rbac.js';
+import {
+  PERMISSIONS,
+  requirePermission,
+  requireStaffAccess,
+  requireVerifiedEmail,
+} from '../auth/rbac.js';
 import { noStore, requireRead, requireWrite, sendJson } from '../auth/request-context.js';
 import type { MarketDataEngine } from './engine.js';
 import { MarketDataStore } from './store.js';
@@ -59,6 +64,7 @@ export function registerMarketDataRoutes(options: MarketDataRouteOptions): void 
     noStore(reply);
     const auth = await requireRead(options.auth, request);
     requirePermission(auth, PERMISSIONS.marketDataRead);
+    requireVerifiedEmail(auth);
     const params = parseWithSchema(symbolParams, request.params);
     const quote = engine.quote(params.symbol);
     if (!quote) throw new AppError('NOT_FOUND', 404, 'Not found');
@@ -86,6 +92,7 @@ export function registerMarketDataRoutes(options: MarketDataRouteOptions): void 
     noStore(reply);
     const auth = await requireRead(options.auth, request, barsQuerySchema);
     requirePermission(auth, PERMISSIONS.marketDataRead);
+    requireVerifiedEmail(auth);
     const query = barsQuerySchema.parse(request.query);
     const bars = await store.readBars(query.symbol, query.timeframe, query.limit);
     return sendJson(reply, 200, barListResponseSchema, {

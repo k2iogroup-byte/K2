@@ -20,7 +20,12 @@ import { z } from 'zod';
 
 import { parseWithSchema } from '../../infrastructure/http/validation.js';
 import type { AuthService } from '../auth/auth-service.js';
-import { PERMISSIONS, requirePermission, requireStaffAccess } from '../auth/rbac.js';
+import {
+  PERMISSIONS,
+  requirePermission,
+  requireStaffAccess,
+  requireVerifiedEmail,
+} from '../auth/rbac.js';
 import { noStore, requireRead, requireWrite, sendJson } from '../auth/request-context.js';
 import { AccountRepository } from './account-repository.js';
 import { AccountService } from './account-service.js';
@@ -73,6 +78,7 @@ export function registerAccountRoutes(app: FastifyInstance, options: AccountRout
     noStore(reply);
     const auth = await requireRead(options.auth, request);
     requirePermission(auth, PERMISSIONS.accountsRead);
+    requireVerifiedEmail(auth);
     return sendJson(reply, 200, accountListResponseSchema, {
       accounts: await service.ownAccounts(auth.userId),
     });
@@ -82,6 +88,7 @@ export function registerAccountRoutes(app: FastifyInstance, options: AccountRout
     noStore(reply);
     const auth = await requireRead(options.auth, request);
     requirePermission(auth, PERMISSIONS.accountsRead);
+    requireVerifiedEmail(auth);
     const params = parseWithSchema(idParamsSchema, request.params);
     return sendJson(
       reply,
@@ -95,6 +102,7 @@ export function registerAccountRoutes(app: FastifyInstance, options: AccountRout
     noStore(reply);
     const auth = await requireRead(options.auth, request);
     requirePermission(auth, PERMISSIONS.accountsRead);
+    requireVerifiedEmail(auth);
     const params = parseWithSchema(idParamsSchema, request.params);
     return sendJson(reply, 200, accountHistoryResponseSchema, {
       transitions: await service.ownHistory(auth.userId, params.id),

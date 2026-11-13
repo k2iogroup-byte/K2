@@ -66,6 +66,7 @@
 - **Depends on:** M-04, M-05, M-07.
 - **Blocking questions:** OQ-001 (drawdown precision), OQ-002, OQ-030, OQ-040…OQ-045.
 - **Notes:** highest-risk module; requires a signed-off written specification with worked examples before implementation.
+- **Copy trading (CONFIRMED, not implemented):** for Challenge and Funded Simulation, copy trading is prohibited. A confirmed violation blocks the account with no warning step. Classification requires multiple independent signals (order sequence, entry and exit timing, instrument and direction, size and ratio, repeated patterns, IP or device or account relationships, coordinated activity). Similar trades alone are not proof. Evidence and the audit record must be kept. Detection of every case is not guaranteed. M-06 must consume account identity from M-03, order and fill records that M-05 does not yet store, and the market events M-04 already normalises (instrument, price, size, source and receive timestamps, sequence). This correction does not add an order table or a detector to M-02, M-03, or M-04.
 
 ### M-07 Financial Ledger
 - **Scope:** double-entry, append-only journal; simulated vs real books; projections for balances; reconciliation tooling.

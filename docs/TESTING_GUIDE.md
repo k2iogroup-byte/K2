@@ -61,8 +61,9 @@ Pull requests run:
 6. `npm audit --audit-level=high`
 7. `node scripts/check-no-secrets.mjs`
 8. Integration tests, in a second job, with a PostgreSQL 16 service and database `k2_test`
+9. Playwright, in a third job, with PostgreSQL 16, Chromium, a production build, and migrations
 
-End-to-end tests are not in CI in this module. They need a browser download and a longer job. Run them before asking for review. Promoting them into CI is a later change, not a silent gap in the local suite.
+The browser job runs `npm run test:e2e`. It is part of the workflow, not only a local file.
 
 ## End-to-end scope
 

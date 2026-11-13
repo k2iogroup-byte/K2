@@ -1,6 +1,14 @@
 import { randomBytes } from 'node:crypto';
 
-import type { AccountStatus, ProfileResponse, RoleCode, StaffRoleCode } from '@k2/shared';
+import type {
+  AccountStatus,
+  ProfileResponse,
+  RegisterRequest,
+  RoleCode,
+  SensitiveStaffProfileResponse,
+  StaffRoleCode,
+  StaffUserResponse,
+} from '@k2/shared';
 
 import type { AppConfig } from '../../config/env.js';
 import type {
@@ -26,7 +34,7 @@ import {
 import type { EmailMessage, EmailSender } from './email.js';
 import { decryptSecret, encryptSecret } from './mfa-crypto.js';
 import { ARGON2_PARAMETERS, hashPassword, verifyPassword } from './passwords.js';
-import type { MemoryRateLimiter } from './rate-limit.js';
+import type { RateLimiter } from './rate-limit.js';
 import { progressiveDelayMs } from './rate-limit.js';
 import type { AuthContext } from './rbac.js';
 import {
@@ -64,7 +72,7 @@ export class AuthService {
   constructor(
     private readonly repository: IdentityRepository,
     private readonly email: EmailSender,
-    private readonly limiter: MemoryRateLimiter,
+    private readonly limiter: RateLimiter,
     private readonly config: Pick<
       AppConfig,
       'mfaEncryptionKey' | 'webOrigin' | 'loginDelayBaseMs' | 'loginDelayCapMs'
@@ -75,21 +83,31 @@ export class AuthService {
     this.dummyHashPromise = hashPassword(randomBytes(32).toString('base64url'));
   }
 
-  async register(email: string, password: string, meta: RequestMeta): Promise<void> {
+  async register(input: RegisterRequest, meta: RequestMeta): Promise<void> {
     this.requireDelivery();
-    this.consume(`register:${meta.ip ?? 'unknown'}`, 5, HOUR_MS);
-    const passwordHash = await hashPassword(password);
+    await this.consume(`register:${meta.ip ?? 'unknown'}`, 5, HOUR_MS);
+    const passwordHash = await hashPassword(input.password);
     const token = newOpaqueToken();
     let created = false;
     try {
       await this.repository.transaction(async (client) => {
         const userId = await this.repository.insertUser(client, {
-          email,
+          email: input.email,
           passwordHash,
           parameters: ARGON2_PARAMETERS,
           role: 'TRADER',
           grantedBy: null,
           emailVerified: false,
+          profile: {
+            firstName: input.firstName,
+            lastName: input.lastName,
+            username: input.username,
+            country: input.country,
+            city: input.city,
+            streetAddress: input.streetAddress,
+            postalCode: input.postalCode,
+            phoneE164: input.phone,
+          },
         });
         await this.repository.insertToken(
           client,
@@ -113,17 +131,20 @@ export class AuthService {
       created = true;
     } catch (error) {
       if (!(error instanceof UniqueViolation)) throw error;
+      if (error.constraint === 'users_username_unique') {
+        throw new AppError('CONFLICT', 409, 'That username is already in use');
+      }
     }
     const delivery = await this.deliver(
       created
         ? {
-            to: email,
+            to: input.email,
             subject: 'Verify your K2 Group email',
             purpose: 'email.verify',
             text: `Verify your email address.\n\n${this.link('/verify-email', token)}\n\nThis link expires in 24 hours and can be used once.\n`,
           }
         : {
-            to: email,
+            to: input.email,
             subject: 'K2 Group account',
             purpose: 'email.already-registered',
             text: 'An account already exists for this email address. Sign in or reset the password.\n',
@@ -135,7 +156,7 @@ export class AuthService {
   }
 
   async verifyEmail(token: string, meta: RequestMeta): Promise<void> {
-    this.consume(`verify:${meta.ip ?? 'unknown'}`, 10, HOUR_MS);
+    await this.consume(`verify:${meta.ip ?? 'unknown'}`, 10, HOUR_MS);
     const userId = await this.repository.transaction(async (client) => {
       const id = await this.repository.consumeToken(
         client,
@@ -165,8 +186,8 @@ export class AuthService {
 
   async resendVerification(email: string, meta: RequestMeta): Promise<void> {
     this.requireDelivery();
-    this.consume(`resend-ip:${meta.ip ?? 'unknown'}`, 10, HOUR_MS);
-    this.consume(`resend:${hashToken(email)}`, 3, HOUR_MS);
+    await this.consume(`resend-ip:${meta.ip ?? 'unknown'}`, 10, HOUR_MS);
+    await this.consume(`resend:${hashToken(email)}`, 3, HOUR_MS);
     const user = await this.repository.findUserByEmail(email);
     if (!user || user.emailVerifiedAt !== null || user.status === 'CLOSED') return;
     const token = newOpaqueToken();
@@ -192,25 +213,29 @@ export class AuthService {
   }
 
   async login(
-    email: string,
+    identifier: { kind: 'email'; email: string } | { kind: 'username'; username: string },
     password: string,
     meta: RequestMeta,
     presentedSessionToken: string | null,
   ): Promise<{ kind: 'full' | 'mfa'; session: IssuedSession }> {
-    this.consume(`login-ip:${meta.ip ?? 'unknown'}`, 30, LOGIN_FAILURE_WINDOW_MS);
-    const failureKey = `login:${hashToken(email)}`;
-    const prior = this.limiter.failureCount(failureKey, LOGIN_FAILURE_WINDOW_MS);
-    if (prior >= LOGIN_FAILURE_LIMIT) throw failureLimit(failureKey, this.limiter);
+    await this.consume(`login-ip:${meta.ip ?? 'unknown'}`, 30, LOGIN_FAILURE_WINDOW_MS);
+    const normalised = identifier.kind === 'email' ? identifier.email : identifier.username;
+    const user =
+      identifier.kind === 'email'
+        ? await this.repository.findUserByEmail(identifier.email)
+        : await this.repository.findUserByUsername(identifier.username);
+    const failureKey = user ? `login-user:${user.id}` : `login:${hashToken(normalised)}`;
+    const prior = await this.limiter.failureCount(failureKey, LOGIN_FAILURE_WINDOW_MS);
+    if (prior >= LOGIN_FAILURE_LIMIT) throw await failureLimit(failureKey, this.limiter);
     await this.sleep(
       progressiveDelayMs(prior, this.config.loginDelayBaseMs, this.config.loginDelayCapMs),
     );
-    const user = await this.repository.findUserByEmail(email);
     const passwordOk = await verifyPassword(
       user?.passwordHash ?? (await this.dummyHash()),
       password,
     );
     if (!user || !passwordOk) {
-      this.limiter.recordFailure(failureKey, LOGIN_FAILURE_WINDOW_MS);
+      await this.limiter.recordFailure(failureKey, LOGIN_FAILURE_WINDOW_MS);
       await this.repository.insertAudit({
         eventType: 'login.failed',
         actorUserId: null,
@@ -222,7 +247,7 @@ export class AuthService {
       throw new AppError('AUTHENTICATION_FAILED', 401, 'Email or password is incorrect');
     }
     if (user.status !== 'ACTIVE') {
-      this.limiter.recordFailure(failureKey, LOGIN_FAILURE_WINDOW_MS);
+      await this.limiter.recordFailure(failureKey, LOGIN_FAILURE_WINDOW_MS);
       await this.repository.insertAudit({
         eventType: 'login.denied',
         actorUserId: user.id,
@@ -233,7 +258,7 @@ export class AuthService {
       });
       throw new AppError('ACCOUNT_UNAVAILABLE', 403, 'This account cannot sign in');
     }
-    this.limiter.clearFailures(failureKey);
+    await this.limiter.clearFailures(failureKey);
     if (presentedSessionToken) await this.repository.revokeByHash(hashToken(presentedSessionToken));
     const mfa = await this.repository.hasConfirmedFactor(user.id);
     const session = await this.repository.transaction(async (client) =>
@@ -324,7 +349,7 @@ export class AuthService {
     if (!pending) {
       throw new AppError('AUTHENTICATION_FAILED', 401, 'This sign-in attempt has expired');
     }
-    this.guardMfa(pending.userId);
+    await this.guardMfa(pending.userId);
     const normalized = normalizeRecoveryCode(code);
     const consumed = await this.repository.transaction(async (client) => {
       const ok = await this.repository.consumeRecoveryCode(
@@ -356,7 +381,7 @@ export class AuthService {
       return session;
     });
     if (!consumed) {
-      this.limiter.recordFailure(mfaKey(pending.userId), MFA_WINDOW_MS);
+      await this.limiter.recordFailure(mfaKey(pending.userId), MFA_WINDOW_MS);
       throw new AppError('AUTHENTICATION_FAILED', 401, 'The recovery code is invalid');
     }
     return consumed;
@@ -395,7 +420,7 @@ export class AuthService {
     code: string,
     meta: RequestMeta,
   ): Promise<IssuedSession> {
-    this.guardMfa(auth.userId);
+    await this.guardMfa(auth.userId);
     const factor = await this.repository.findPendingFactor(auth.userId);
     const secret = factor
       ? decryptSecret(
@@ -405,7 +430,7 @@ export class AuthService {
         )
       : null;
     if (!factor || !secret || !totpValid(auth.email, secret, code)) {
-      this.limiter.recordFailure(mfaKey(auth.userId), MFA_WINDOW_MS);
+      await this.limiter.recordFailure(mfaKey(auth.userId), MFA_WINDOW_MS);
       throw new AppError('AUTHENTICATION_FAILED', 401, 'The authentication code is incorrect');
     }
     return this.repository.transaction(async (client) => {
@@ -475,8 +500,8 @@ export class AuthService {
 
   async forgotPassword(email: string, meta: RequestMeta): Promise<void> {
     this.requireDelivery();
-    this.consume(`forgot-ip:${meta.ip ?? 'unknown'}`, 5, HOUR_MS);
-    this.consume(`forgot:${hashToken(email)}`, 3, HOUR_MS);
+    await this.consume(`forgot-ip:${meta.ip ?? 'unknown'}`, 5, HOUR_MS);
+    await this.consume(`forgot:${hashToken(email)}`, 3, HOUR_MS);
     const user = await this.repository.findUserByEmail(email);
     if (!user || user.status === 'CLOSED') return;
     const token = newOpaqueToken();
@@ -506,7 +531,7 @@ export class AuthService {
     password: string,
     meta: RequestMeta,
   ): Promise<'sent' | 'unavailable'> {
-    this.consume(`reset:${meta.ip ?? 'unknown'}`, 10, HOUR_MS);
+    await this.consume(`reset:${meta.ip ?? 'unknown'}`, 10, HOUR_MS);
     const passwordHash = await hashPassword(password);
     const userId = await this.repository.transaction(async (client) => {
       const id = await this.repository.consumeToken(
@@ -630,20 +655,6 @@ export class AuthService {
     return toProfile(updated);
   }
 
-  profileFrom(auth: AuthContext): ProfileResponse {
-    return {
-      id: auth.userId,
-      email: auth.email,
-      displayName: auth.displayName,
-      status: auth.status,
-      emailVerified: auth.emailVerifiedAt !== null,
-      emailVerifiedAt: auth.emailVerifiedAt,
-      createdAt: auth.createdAt,
-      roles: [...auth.roles],
-      mfaEnrolled: auth.mfaEnrolled,
-    };
-  }
-
   async inviteStaff(
     auth: AuthContext,
     input: { email: string; role: StaffRoleCode; password: string; totp: string },
@@ -695,7 +706,7 @@ export class AuthService {
   }
 
   async acceptInvitation(token: string, password: string, meta: RequestMeta): Promise<void> {
-    this.consume(`invite:${meta.ip ?? 'unknown'}`, 10, HOUR_MS);
+    await this.consume(`invite:${meta.ip ?? 'unknown'}`, 10, HOUR_MS);
     const passwordHash = await hashPassword(password);
     const tokenHash = hashToken(token);
     const accepted = await this.repository.transaction(async (client) => {
@@ -723,6 +734,7 @@ export class AuthService {
         role: invitation.roleCode,
         grantedBy: invitation.invitedBy,
         emailVerified: true,
+        profile: null,
       });
       await this.repository.markInvitationAccepted(client, tokenHash);
       await this.repository.insertAudit(
@@ -743,9 +755,33 @@ export class AuthService {
     }
   }
 
-  async staffProfile(userId: string): Promise<ProfileResponse> {
+  async ownProfile(userId: string): Promise<ProfileResponse> {
     const profile = await this.repository.findProfile(userId);
     if (!profile) throw new AppError('NOT_FOUND', 404, 'Not found');
+    return toProfile(profile);
+  }
+
+  async staffProfile(userId: string): Promise<StaffUserResponse> {
+    const profile = await this.repository.findProfile(userId);
+    if (!profile) throw new AppError('NOT_FOUND', 404, 'Not found');
+    return toStaffProfile(profile);
+  }
+
+  async sensitiveStaffProfile(
+    auth: AuthContext,
+    userId: string,
+    meta: RequestMeta,
+  ): Promise<SensitiveStaffProfileResponse> {
+    const profile = await this.repository.findProfile(userId);
+    if (!profile) throw new AppError('NOT_FOUND', 404, 'Not found');
+    await this.repository.insertAudit({
+      eventType: 'staff.sensitive_profile_read',
+      actorUserId: auth.userId,
+      targetUserId: userId,
+      ip: meta.ip,
+      userAgent: clipAgent(meta.userAgent),
+      metadata: { fields: 'phone,address' },
+    });
     return toProfile(profile);
   }
 
@@ -761,14 +797,14 @@ export class AuthService {
       throw new AppError('FORBIDDEN', 403, 'You cannot change your own roles');
     }
     await this.reauthenticate(auth, password, totp);
-    const before = await this.repository.findProfile(targetId);
-    if (!before) throw new AppError('NOT_FOUND', 404, 'Not found');
     await this.repository.transaction(async (client) => {
+      await this.repository.lockRoleChanges(client);
       const locked = await this.repository.lockUser(client, targetId);
       if (!locked) throw new AppError('NOT_FOUND', 404, 'Not found');
       await this.repository.lockAdminRows(client);
+      const currentRoles = await this.repository.currentRoles(client, targetId);
       const removesLastAdmin =
-        before.roles.includes('ADMIN') &&
+        currentRoles.includes('ADMIN') &&
         !roles.includes('ADMIN') &&
         (await this.repository.countAdmins(client)) <= 1;
       if (removesLastAdmin) {
@@ -785,7 +821,7 @@ export class AuthService {
           ip: meta.ip,
           userAgent: clipAgent(meta.userAgent),
           metadata: {
-            previousRoles: before.roles.join(','),
+            previousRoles: currentRoles.join(','),
             nextRoles: roles.join(','),
           },
         },
@@ -817,6 +853,7 @@ export class AuthService {
     }
     await this.reauthenticate(auth, password, totp);
     await this.repository.transaction(async (client) => {
+      await this.repository.lockRoleChanges(client);
       const locked = await this.repository.lockUser(client, targetId);
       if (!locked) throw new AppError('NOT_FOUND', 404, 'Not found');
       if (!allowedTransition(locked.status, status)) {
@@ -856,9 +893,11 @@ export class AuthService {
       throw new AppError('FORBIDDEN', 403, 'You cannot reset your own multi-factor authentication');
     }
     await this.reauthenticate(auth, password, totp);
-    const profile = await this.repository.findProfile(targetId);
-    if (!profile) throw new AppError('NOT_FOUND', 404, 'Not found');
-    await this.repository.transaction(async (client) => {
+    const outcome = await this.repository.transaction(async (client) => {
+      await this.repository.lockRoleChanges(client);
+      const locked = await this.repository.lockUser(client, targetId);
+      if (!locked) return 'missing' as const;
+      if (!(await this.repository.userIsStaff(client, targetId))) return 'not_staff' as const;
       await this.repository.disableFactors(client, targetId);
       await this.repository.revokeAll(targetId, client);
       await this.repository.insertAudit(
@@ -872,7 +911,24 @@ export class AuthService {
         },
         client,
       );
+      return 'reset' as const;
     });
+    if (outcome === 'missing') throw new AppError('NOT_FOUND', 404, 'Not found');
+    if (outcome === 'not_staff') {
+      await this.repository.insertAudit({
+        eventType: 'staff.mfa_reset_rejected',
+        actorUserId: auth.userId,
+        targetUserId: targetId,
+        ip: meta.ip,
+        userAgent: clipAgent(meta.userAgent),
+        metadata: { reason: 'not_staff' },
+      });
+      throw new AppError(
+        'FORBIDDEN',
+        403,
+        'Staff multi-factor reset applies only to a staff account',
+      );
+    }
   }
 
   async listAudit(): Promise<
@@ -924,7 +980,7 @@ export class AuthService {
   }
 
   private async assertConfirmedTotp(userId: string, email: string, code: string): Promise<void> {
-    this.guardMfa(userId);
+    await this.guardMfa(userId);
     const factor = await this.repository.findConfirmedFactor(userId);
     const secret = factor
       ? decryptSecret(
@@ -934,14 +990,14 @@ export class AuthService {
         )
       : null;
     if (!factor || !secret || !totpValid(email, secret, code)) {
-      this.limiter.recordFailure(mfaKey(userId), MFA_WINDOW_MS);
+      await this.limiter.recordFailure(mfaKey(userId), MFA_WINDOW_MS);
       throw new AppError('AUTHENTICATION_FAILED', 401, 'The authentication code is incorrect');
     }
   }
 
-  private guardMfa(userId: string): void {
-    if (this.limiter.failureCount(mfaKey(userId), MFA_WINDOW_MS) >= MFA_ATTEMPT_LIMIT) {
-      throw failureLimit(mfaKey(userId), this.limiter, MFA_WINDOW_MS);
+  private async guardMfa(userId: string): Promise<void> {
+    if ((await this.limiter.failureCount(mfaKey(userId), MFA_WINDOW_MS)) >= MFA_ATTEMPT_LIMIT) {
+      throw await failureLimit(mfaKey(userId), this.limiter, MFA_WINDOW_MS);
     }
   }
 
@@ -1009,8 +1065,8 @@ export class AuthService {
     }
   }
 
-  private consume(key: string, limit: number, windowMs: number): void {
-    const decision = this.limiter.consume(key, limit, windowMs);
+  private async consume(key: string, limit: number, windowMs: number): Promise<void> {
+    const decision = await this.limiter.consume(key, limit, windowMs);
     if (!decision.ok) throw new RateLimitError(decision.retryAfterSeconds);
   }
 
@@ -1041,8 +1097,22 @@ function toContext(row: SessionContext): AuthContext {
 
 function toProfile(record: ProfileRecord): ProfileResponse {
   return {
+    ...toStaffProfile(record),
+    country: record.country,
+    city: record.city,
+    streetAddress: record.streetAddress,
+    postalCode: record.postalCode,
+    phone: record.phoneE164,
+  };
+}
+
+function toStaffProfile(record: ProfileRecord): StaffUserResponse {
+  return {
     id: record.id,
     email: record.email,
+    username: record.username,
+    firstName: record.firstName,
+    lastName: record.lastName,
     displayName: record.displayName,
     status: record.status,
     emailVerified: record.emailVerifiedAt !== null,
@@ -1070,12 +1140,12 @@ function mfaKey(userId: string): string {
   return `mfa:${userId}`;
 }
 
-function failureLimit(
+async function failureLimit(
   key: string,
-  limiter: MemoryRateLimiter,
+  limiter: RateLimiter,
   windowMs = LOGIN_FAILURE_WINDOW_MS,
-): RateLimitError {
-  const age = limiter.oldestFailureAgeMs(key, windowMs) ?? 0;
+): Promise<RateLimitError> {
+  const age = (await limiter.oldestFailureAgeMs(key, windowMs)) ?? 0;
   return new RateLimitError(Math.max(1, Math.ceil((windowMs - age) / 1000)));
 }
 

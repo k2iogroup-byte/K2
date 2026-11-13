@@ -43,6 +43,20 @@ describe('password and token storage', () => {
         password: 'short',
       }).success,
     ).toBe(false);
+    expect(
+      registerRequestSchema.safeParse({
+        firstName: 'Ada',
+        lastName: 'Trader',
+        username: 'ada.trader',
+        email: 'trader@example.com',
+        password: 'correct-horse-battery',
+        country: 'United States',
+        city: 'Chicago',
+        streetAddress: '1 Market Street',
+        postalCode: '60601',
+        phone: '+1 415 555 2671',
+      }).success,
+    ).toBe(true);
   });
 });
 

@@ -1,5 +1,13 @@
 export type RateDecision = { ok: true } | { ok: false; retryAfterSeconds: number };
 
+export interface RateLimiter {
+  consume(key: string, limit: number, windowMs: number): RateDecision | Promise<RateDecision>;
+  failureCount(key: string, windowMs: number): number | Promise<number>;
+  recordFailure(key: string, windowMs: number): number | Promise<number>;
+  oldestFailureAgeMs(key: string, windowMs: number): number | null | Promise<number | null>;
+  clearFailures(key: string): void | Promise<void>;
+}
+
 type Bucket = {
   count: number;
   resetAt: number;
@@ -11,7 +19,7 @@ export function progressiveDelayMs(priorFailures: number, baseMs: number, capMs:
   return Math.min(capMs, baseMs * 2 ** exponent);
 }
 
-export class MemoryRateLimiter {
+export class MemoryRateLimiter implements RateLimiter {
   private readonly buckets = new Map<string, Bucket>();
   private readonly failures = new Map<string, number[]>();
 

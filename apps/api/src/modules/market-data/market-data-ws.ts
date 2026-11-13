@@ -8,7 +8,10 @@ import { readOpaqueCookie, SESSION_COOKIE } from '../auth/cookies.js';
 import { PERMISSIONS } from '../auth/rbac.js';
 import type { DistributionEvent, MarketDataEngine } from './engine.js';
 
+const SLOW_CONSUMER_BYTES = 1_048_576;
+
 type WsMessageHandler = {
+  bufferedAmount?: number;
   on(event: 'message', listener: (raw: Buffer | string) => void): void;
   on(event: 'close', listener: () => void): void;
   send(data: string): void;
@@ -29,6 +32,13 @@ export function registerMarketDataSocket(
     }
     const queued: (Buffer | string)[] = [];
     let ready = false;
+    let closed = false;
+    let unsubscribe: (() => void) | null = null;
+    const stop = (): void => {
+      if (!unsubscribe) return;
+      unsubscribe();
+      unsubscribe = null;
+    };
     const handle = (raw: Buffer | string, symbols: Set<string>): void => {
       const text = typeof raw === 'string' ? raw : raw.toString('utf8');
       let payload: unknown;
@@ -69,6 +79,10 @@ export function registerMarketDataSocket(
       );
     };
     const symbols = new Set<string>();
+    socket.on('close', () => {
+      closed = true;
+      stop();
+    });
     socket.on('message', (raw) => {
       if (!ready) {
         queued.push(raw);
@@ -77,18 +91,30 @@ export function registerMarketDataSocket(
       handle(raw, symbols);
     });
     void auth.loadSession(readOpaqueCookie(request, SESSION_COOKIE)).then((session) => {
-      if (!session || !session.permissions.has(PERMISSIONS.marketDataRead)) {
+      if (closed) return;
+      if (
+        !session ||
+        session.emailVerifiedAt === null ||
+        !session.permissions.has(PERMISSIONS.marketDataRead)
+      ) {
         socket.close(1008, 'sign in required');
         return;
       }
-      const unsubscribe = engine.subscribe((event) => {
+      unsubscribe = engine.subscribe((event) => {
+        if (closed) return;
+        if ((socket.bufferedAmount ?? 0) > SLOW_CONSUMER_BYTES) {
+          stop();
+          socket.close(1008, 'slow consumer');
+          return;
+        }
         if (event.type === 'quote' && !symbols.has(event.quote.symbol)) return;
         if (event.type === 'trade' && !symbols.has(event.trade.symbol)) return;
         if (event.type === 'gap' && !symbols.has(event.symbol)) return;
-        socket.send(JSON.stringify(outbound(event)));
-      });
-      socket.on('close', () => {
-        unsubscribe();
+        try {
+          socket.send(JSON.stringify(outbound(event)));
+        } catch {
+          stop();
+        }
       });
       ready = true;
       for (const raw of queued) handle(raw, symbols);

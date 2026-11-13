@@ -1,6 +1,10 @@
 # Module 03 — Challenge and account management
 
-**Status:** Implemented on `module-03-challenge-accounts`. Not deployed. No Vercel or Railway resources were created. No payment provider and no ledger are included.
+**Status:** Corrected on `cursor/correction-modules-02-04-82a0`. Not deployed. No Vercel or Railway resources were created. No payment provider and no ledger are included.
+
+## Correction — 2026-11-14
+
+`provisionFromVerifiedPurchase` refuses a user whose email is not verified. The check reads `email_verified_at` under the same row lock as the account-status check. Own account routes also require a verified email. The five catalogue prices are unchanged. Stage 2 accounts, Funded Simulation, and automatic `PROVISIONED` → `ACTIVE` activation are not implemented. Unresolved rule parameters stay `UNRESOLVED` with a null value.
 
 This document is the implementation record. The proposed catalogue and account sketches in [API_SPECIFICATION.md](./API_SPECIFICATION.md) and [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) stay proposed. Where this module differs, this file is the implemented contract.
 
