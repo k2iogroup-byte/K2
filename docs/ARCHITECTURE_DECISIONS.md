@@ -111,3 +111,21 @@ Vercel serves the frontend. Railway serves the API and Postgres for an environme
 `BUSINESS_PLAN.md`, `DECISIONS_LOG.md`, `OPEN_QUESTIONS.md`, `PRODUCT_REQUIREMENTS.md`, `MVP_SCOPE.md`, and the business sections of the other planning documents were not rewritten. Technology notes were added only where a reader would otherwise think the documentation-only phase still forbids a foundation, or that the logical database had been created. Those notes are labeled.
 
 OQ-070 (React) and OQ-071 (Railway and Vercel) remain open founder questions. This repository is the engineering selection the Module 01 specification told the team to make so later modules have one codebase.
+
+## ADR-011 — Server-side sessions for Module 02
+
+**Status:** Required by the Module 02 specification. The earlier `/v1` refresh-token sketch stays PROPOSED and was not built.
+
+Authentication is an opaque session row in PostgreSQL. The cookie holds the token. The database holds its SHA-256 hash. There is no access token in browser storage and no refresh endpoint.
+
+The browser talks to `/k2-api` on the Next.js origin. That route proxies to the API, so the session cookie is first-party and `SameSite=Lax`. `Secure` is set outside development. CSRF uses `x-k2-request` plus a session-bound `k2_csrf` cookie. CORS remains an explicit origin list and now allows the authentication methods.
+
+Rate limits are in-process. Redis was not added. `trustProxy` stays `false`.
+
+Argon2id parameters, session lifetimes, and the permission grants are engineering defaults recorded in [MODULE_02_AUTHENTICATION.md](./MODULE_02_AUTHENTICATION.md). They are not new founder business rules.
+
+Staff SSO is not implemented. MFA for staff is TOTP, encrypted at rest, and required before `/staff/*` routes. Traders are not enrolled at registration. `sessions.mfa_verified_at` is the marker a later payout module can require.
+
+## ADR-004 note after Module 02
+
+ADR-004 still forbids speculative trading, ledger, and competition tables, and it still defers Redis. Module 02 added only the identity tables in migration `0002_identity_access`.

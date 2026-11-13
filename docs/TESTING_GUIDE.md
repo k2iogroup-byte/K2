@@ -16,13 +16,16 @@ npm run test:e2e
 
 ## Layout
 
-| Path                                         | Kind           | Database                               |
-| -------------------------------------------- | -------------- | -------------------------------------- |
-| `apps/api/test/unit`                         | API unit tests | None. Health uses an in-memory probe   |
-| `packages/shared/test`                       | Contract tests | None                                   |
-| `apps/web/lib/api-base-url.test.ts`          | Web unit test  | None                                   |
-| `apps/api/test/integration/database.test.ts` | Integration    | `TEST_DATABASE_URL` only               |
-| `apps/web/e2e/foundation.spec.ts`            | End-to-end     | Development database, already migrated |
+| Path                                         | Kind           | Database                                 |
+| -------------------------------------------- | -------------- | ---------------------------------------- |
+| `apps/api/test/unit`                         | API unit tests | None. Health uses an in-memory probe     |
+| `packages/shared/test`                       | Contract tests | None                                     |
+| `apps/web/lib/api-base-url.test.ts`          | Web unit test  | None                                     |
+| `apps/api/test/integration/database.test.ts` | Integration    | `TEST_DATABASE_URL` only                 |
+| `apps/api/test/integration/auth.test.ts`     | Integration    | `TEST_DATABASE_URL` only                 |
+| `apps/web/lib/api-proxy.test.ts`             | Web unit test  | None                                     |
+| `apps/web/e2e/foundation.spec.ts`            | End-to-end     | Development database, already migrated   |
+| `apps/web/e2e/auth.spec.ts`                  | End-to-end     | Development database and capture mailbox |
 
 ## What the initial tests cover
 
@@ -63,6 +66,8 @@ End-to-end tests are not in CI in this module. They need a browser download and 
 
 ## End-to-end scope
 
-Playwright loads `/` on a 1280×800 Chromium viewport and on a Pixel 7 viewport. It expects the heading `K2 Group`, the sentence that this module does not provide accounts, payments, or trading, the status text `Operational`, the schema id `0001`, and no horizontal overflow.
+Playwright loads `/` on a 1280×800 Chromium viewport and on a Pixel 7 viewport. It expects the heading `K2 Group`, the sentence that this application does not provide payments or trading, the status text `Operational`, the schema id `0001`, and no horizontal overflow.
 
-That is a foundation smoke test. It is not a trading, login, or payment journey.
+`auth.spec.ts` registers a trader through the browser, reads the capture mailbox, verifies the email, signs in, and opens the profile. It does not cover trading or payments.
+
+Module 02 security cases (duplicate registration, role escalation, verification reuse and expiry, suspended and closed login, rate limiting, session rotation and revocation, password reset, RBAC, staff MFA, and one-time recovery codes) are in `apps/api/test/integration/auth.test.ts` against PostgreSQL.

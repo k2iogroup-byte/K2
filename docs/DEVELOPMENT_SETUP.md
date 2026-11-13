@@ -99,7 +99,7 @@ npm run db:status
 npm run db:migrate
 ```
 
-After rollback, status shows `0001 foundation_schema_info pending`. The bookkeeping table `schema_migrations` remains. After migrate, the row is applied again. `/health` returns 503 between rollback and the next migrate, and 200 after it.
+`npm run db:rollback` removes only the latest migration. After Module 02, the first rollback removes `0002` and leaves `0001` applied. A second rollback removes `0001`. The bookkeeping table `schema_migrations` remains. `/health` still reports schema `0001` while `foundation_schema_info` is present, and 503 after that row is gone.
 
 ## Troubleshooting
 

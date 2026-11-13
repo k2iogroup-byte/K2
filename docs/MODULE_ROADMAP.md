@@ -41,7 +41,8 @@
 ### M-02 Authentication and User Management
 - **Scope:** registration, email verification, login, MFA, sessions, password reset, RBAC, staff SSO.
 - **Depends on:** M-01.
-- **Notes:** staff MFA mandatory (PROPOSED).
+- **Notes:** staff MFA is mandatory in the Module 02 implementation. Third-party staff SSO is not implemented; no identity provider has been selected.
+- **Module 02 implementation status:** registration, verification, sessions, password reset, permission checks, staff invitation, and TOTP MFA are implemented. See [MODULE_02_AUTHENTICATION.md](./MODULE_02_AUTHENTICATION.md). Not deployed.
 
 ### M-03 Challenge and Account Management
 - **Scope:** product catalogue (five CONFIRMED sizes/prices), rule-set versioning, account provisioning, lifecycle Stage 1 → Stage 2 → Funded Simulation, expiry, failure.

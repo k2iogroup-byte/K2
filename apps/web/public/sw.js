@@ -1,4 +1,4 @@
-const CACHE = 'k2-shell-v1';
+const CACHE = 'k2-shell-v2';
 const SHELL = ['/', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -22,6 +22,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/k2-api')) return;
   event.respondWith(
     fetch(request)
       .then((response) => {

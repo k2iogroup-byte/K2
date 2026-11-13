@@ -5,6 +5,15 @@ export const API_ERROR_CODES = [
   'NOT_FOUND',
   'PAYLOAD_TOO_LARGE',
   'INTERNAL_ERROR',
+  'AUTHENTICATION_FAILED',
+  'ACCOUNT_UNAVAILABLE',
+  'FORBIDDEN',
+  'MFA_REQUIRED',
+  'MFA_ENROLLMENT_REQUIRED',
+  'RATE_LIMITED',
+  'CONFLICT',
+  'EMAIL_DELIVERY_UNAVAILABLE',
+  'CSRF_FAILED',
 ] as const;
 
 export const apiErrorDetailSchema = z.strictObject({

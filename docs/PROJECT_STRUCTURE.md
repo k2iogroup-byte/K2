@@ -17,7 +17,8 @@ This document describes the directories that exist after Module 01. It does not 
 │   │       │   ├── logging/ Structured logs and redaction
 │   │       │   └── ws/      WebSocket endpoint
 │   │       ├── modules/
-│   │       │   └── health/  The only HTTP module in Module 01
+│   │       │   ├── auth/    Registration, sessions, MFA, staff access
+│   │       │   └── health/  Infrastructure health
 │   │       └── runtime/     Process entry helpers
 │   └── web/                 Next.js frontend
 │       ├── app/             App Router shell
@@ -49,7 +50,7 @@ The health module depends on a `DatabaseProbe` interface. The PostgreSQL impleme
 
 ## What is intentionally absent
 
-There is no `apps/api/src/modules` entry for authentication, payments, trading, risk, or Challenge accounts. There is no Redis client, no message broker, and no business table. The only database objects Module 01 creates are `schema_migrations` (runner bookkeeping) and `foundation_schema_info` (a single infrastructure row that proves a migration ran).
+Module 02 adds `apps/api/src/modules/auth`. There is still no payments, trading, risk, or Challenge module. There is no Redis client and no message broker. Module 01 database objects remain `schema_migrations` and `foundation_schema_info`. Module 02 adds the identity tables in migration `0002_identity_access`.
 
 ## Naming
 

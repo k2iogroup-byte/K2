@@ -1,7 +1,10 @@
+import path from 'node:path';
+
 import { defineConfig, devices } from '@playwright/test';
 
 const apiPort = 4000;
 const webPort = 3000;
+const emailOutbox = path.resolve(process.cwd(), 'apps/api/.email-outbox');
 
 export default defineConfig({
   testDir: './e2e',
@@ -32,6 +35,8 @@ export default defineConfig({
         APP_ENV: 'development',
         HOST: '127.0.0.1',
         PORT: String(apiPort),
+        EMAIL_DELIVERY: 'capture',
+        EMAIL_OUTBOX_PATH: emailOutbox,
       },
     },
     {

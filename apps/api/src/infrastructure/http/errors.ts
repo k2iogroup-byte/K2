@@ -24,10 +24,23 @@ export class AppError extends Error {
   }
 }
 
+export class RateLimitError extends AppError {
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number) {
+    super('RATE_LIMITED', 429, 'Too many requests');
+    this.name = 'RateLimitError';
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 export function installErrorHandling(app: FastifyInstance): void {
   app.setErrorHandler((error: FastifyError, request: FastifyRequest, reply: FastifyReply) => {
     const requestId = request.id;
     reply.header('x-request-id', requestId);
+    if (error instanceof RateLimitError) {
+      reply.header('retry-after', String(error.retryAfterSeconds));
+    }
     if (error instanceof AppError) {
       return reply
         .status(error.statusCode)

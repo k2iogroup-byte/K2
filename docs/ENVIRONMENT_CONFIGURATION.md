@@ -26,19 +26,26 @@ Production and staging secrets stay in Vercel and Railway. They are not copied i
 
 ## API variables
 
-| Variable            | Required   | Rules                                                                     |
-| ------------------- | ---------- | ------------------------------------------------------------------------- |
-| `APP_ENV`           | Yes        | `development`, `staging`, or `production`                                 |
-| `DATABASE_URL`      | Yes        | `postgres://` or `postgresql://`, with user, password, and database name  |
-| `DATABASE_SSL`      | Yes        | `disable`, `no-verify`, or `verify`                                       |
-| `CORS_ORIGINS`      | Yes        | Comma-separated origins. `*` is rejected. No paths, queries, or userinfo  |
-| `HOST`              | No         | Default `127.0.0.1` in development and `0.0.0.0` otherwise                |
-| `PORT`              | No         | Default `4000`. `0` is allowed only in development (ephemeral test ports) |
-| `LOG_LEVEL`         | No         | Default `info`                                                            |
-| `SERVICE_NAME`      | No         | Default `k2-api`. Lowercase letters, digits, hyphens                      |
-| `SERVICE_VERSION`   | No         | Default `0.1.0`                                                           |
-| `DATABASE_POOL_MAX` | No         | Default `10`, maximum `20`                                                |
-| `TEST_DATABASE_URL` | Tests only | Not read by the server. Database name must end with `_test`               |
+| Variable                                              | Required                   | Rules                                                                                                                                                                                     |
+| ----------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_ENV`                                             | Yes                        | `development`, `staging`, or `production`                                                                                                                                                 |
+| `DATABASE_URL`                                        | Yes                        | `postgres://` or `postgresql://`, with user, password, and database name                                                                                                                  |
+| `DATABASE_SSL`                                        | Yes                        | `disable`, `no-verify`, or `verify`                                                                                                                                                       |
+| `CORS_ORIGINS`                                        | Yes                        | Comma-separated origins. `*` is rejected. No paths, queries, or userinfo                                                                                                                  |
+| `HOST`                                                | No                         | Default `127.0.0.1` in development and `0.0.0.0` otherwise                                                                                                                                |
+| `PORT`                                                | No                         | Default `4000`. `0` is allowed only in development (ephemeral test ports)                                                                                                                 |
+| `LOG_LEVEL`                                           | No                         | Default `info`                                                                                                                                                                            |
+| `SERVICE_NAME`                                        | No                         | Default `k2-api`. Lowercase letters, digits, hyphens                                                                                                                                      |
+| `SERVICE_VERSION`                                     | No                         | Default `0.1.0`                                                                                                                                                                           |
+| `DATABASE_POOL_MAX`                                   | No                         | Default `10`, maximum `20`                                                                                                                                                                |
+| `TEST_DATABASE_URL`                                   | Tests only                 | Not read by the server. Database name must end with `_test`                                                                                                                               |
+| `MFA_ENCRYPTION_KEY`                                  | Yes outside development    | Base64 encoding of 32 bytes. In development, an unset key uses a fixture of 32 `0x01` bytes, which is rejected in staging and production. `REPLACE_WITH` is rejected everywhere.          |
+| `EMAIL_DELIVERY`                                      | Yes outside development    | `capture` (development only), `unconfigured`, or `smtp`. Unset development defaults to `capture`.                                                                                         |
+| `EMAIL_OUTBOX_PATH`                                   | No                         | Capture mode only. Gitignored mailbox file. Tokens are in the file, not in logs.                                                                                                          |
+| `WEB_ORIGIN`                                          | No                         | Email-link origin. Must be one of `CORS_ORIGINS`. Defaults to the first origin.                                                                                                           |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`                 | When `EMAIL_DELIVERY=smtp` | Generic SMTP. Optional `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`.                                                                                                                       |
+| `AUTH_LOGIN_DELAY_BASE_MS`, `AUTH_LOGIN_DELAY_CAP_MS` | No                         | Progressive login delay. Development default is 0. Outside development the base must be at least 200 ms and the cap must be at least the base. Default outside development is 250 / 4000. |
+| `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`   | CLI only                   | Not read by the server. Never commit them. Outside development, `BOOTSTRAP_ADMIN_CONFIRM=create-first-admin` is also required.                                                            |
 
 Password rules, applied without putting the password in the error text:
 
@@ -57,6 +64,8 @@ Invalid configuration stops the process before it listens. The stderr line is JS
 ## Web variable
 
 `NEXT_PUBLIC_API_BASE_URL` is an origin such as `http://127.0.0.1:4000` or `https://the-railway-domain`. Next.js inlines it at build time. Set it in the Vercel project before building. The page still renders if it is missing; the health panel says the variable is not set. The parser drops any path and rejects embedded credentials.
+
+Authentication pages call `/k2-api` on the web origin. The Next.js route proxies to `API_PROXY_DESTINATION` (default `http://127.0.0.1:4000`). That variable is server-side. Do not put a password in it. The session cookie is set on the web origin.
 
 ## What is not logged
 

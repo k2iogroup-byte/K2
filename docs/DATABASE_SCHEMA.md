@@ -2,7 +2,9 @@
 
 > **Status of this entire document: PROPOSED.** This is a logical data model described in tables and prose. Names, types, and relationships are recommendations for review. Business values referenced here (prices, limits, splits) are governed by [BUSINESS_PLAN.md](./BUSINESS_PLAN.md) and are stored as data, not hard-coded.
 >
-> **Module 01:** No business table in this document has been created. The foundation added only the migration bookkeeping table `schema_migrations` and the infrastructure row `foundation_schema_info`. See `apps/api/db/migrations/` and [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md). This document remains a proposed logical model.
+> **Module 01** added `schema_migrations` and `foundation_schema_info`.
+>
+> **Module 02 (implemented):** migration `0002_identity_access` creates `users`, `credentials`, `roles`, `permissions`, `role_permissions`, `user_roles`, `sessions`, `email_verification_tokens`, `password_reset_tokens`, `mfa_factors`, `mfa_recovery_codes`, `staff_invitations`, and append-only `authentication_audit_events`. Account status is `ACTIVE`, `SUSPENDED`, or `CLOSED`. Email verification is `email_verified_at`, not a status. The proposed `PENDING` status and `country_of_residence` were not created. Tokens and recovery codes are hashes. TOTP secrets are ciphertext. See [MODULE_02_AUTHENTICATION.md](./MODULE_02_AUTHENTICATION.md). The rest of this document remains a proposed logical model.
 
 ---
 

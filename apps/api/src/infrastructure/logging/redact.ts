@@ -1,7 +1,8 @@
 const PATTERNS: readonly RegExp[] = [
   /postgres(?:ql)?:\/\/[^\s"'<>]+/gi,
   /\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi,
-  /\b(?:password|passwd|secret|api[_-]?key|authorization)\b\s*[:=]\s*[^\s,;]+/gi,
+  /\b(?:password|passwd|secret|api[_-]?key|authorization|token|totp)\b\s*[:=]\s*[^\s,;]+/gi,
+  /\bk2_(?:session|csrf|mfa)=[^;\s]+/gi,
 ];
 
 export function redactSensitiveText(text: string): string {
@@ -16,15 +17,35 @@ export const REDACT_CENSOR = '[REDACTED]';
 
 export const REDACT_PATHS = [
   'password',
+  'currentPassword',
+  'newPassword',
+  'token',
+  'secret',
+  'csrf',
+  'csrfToken',
+  'recoveryCode',
+  'recoveryCodes',
+  'otpauthUri',
+  'mfaEncryptionKey',
   'databaseUrl',
   'connectionString',
   'authorization',
   'cookie',
   '*.password',
+  '*.currentPassword',
+  '*.newPassword',
+  '*.token',
+  '*.secret',
+  '*.csrf',
+  '*.csrfToken',
+  '*.recoveryCode',
+  '*.recoveryCodes',
+  '*.otpauthUri',
   '*.databaseUrl',
   '*.connectionString',
   '*.authorization',
   '*.cookie',
   'req.headers.authorization',
   'req.headers.cookie',
+  'req.headers["x-csrf-token"]',
 ] as const;

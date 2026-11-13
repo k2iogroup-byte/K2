@@ -14,14 +14,19 @@
     "db:status": "node dist/infrastructure/db/migrate-cli.js status",
     "db:migrate:dev": "tsx src/infrastructure/db/migrate-cli.ts up",
     "db:rollback:dev": "tsx src/infrastructure/db/migrate-cli.ts down",
-    "db:status:dev": "tsx src/infrastructure/db/migrate-cli.ts status"
+    "db:status:dev": "tsx src/infrastructure/db/migrate-cli.ts status",
+    "bootstrap:staff": "tsx src/cli/bootstrap-staff.ts"
   },
   "dependencies": {
+    "@fastify/cookie": "11.1.5",
     "@fastify/cors": "11.4.3",
     "@fastify/helmet": "13.2.0",
     "@fastify/websocket": "11.3.7",
     "@k2/shared": "0.1.0",
+    "@node-rs/argon2": "2.2.2",
     "fastify": "5.12.8",
+    "nodemailer": "10.5.0",
+    "otpauth": "9.6.0",
     "pg": "8.23.1",
     "pino": "10.4.0",
     "zod": "4.6.7"

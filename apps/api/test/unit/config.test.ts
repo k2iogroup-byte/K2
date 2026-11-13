@@ -77,6 +77,8 @@ describe('configuration validation', () => {
         DATABASE_SSL: 'disable',
         DATABASE_URL:
           'postgresql://k2:local-dev-password-value@postgres.railway.internal:5432/railway',
+        MFA_ENCRYPTION_KEY: Buffer.from('0123456789abcdef0123456789abcdef').toString('base64'),
+        EMAIL_DELIVERY: 'unconfigured',
       }),
     );
     expect(staging.databaseSsl).toBe('disable');

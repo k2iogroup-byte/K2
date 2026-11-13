@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - module-01-project-foundation
+      - module-02-auth
       - ci-run-on-main
       - main
 

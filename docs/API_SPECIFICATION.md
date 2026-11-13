@@ -1,6 +1,8 @@
 # K2 Group — API Specification (PROPOSED)
 
-> **Status of this entire document: PROPOSED.** This describes a recommended API surface using resource tables and prose. It contains **no implementation, no OpenAPI files, and no runnable code**. Paths, payload fields, and behaviours are subject to founder and engineering review. No API has been built.
+> **Status of this entire document: PROPOSED**, except the Module 02 note below. The tables in this file are still a recommended future surface. They are not the implemented contract.
+>
+> **Module 02 (implemented):** authentication and user management are implemented without a `/v1` prefix and without refresh tokens. The contract, including paths and schemas, is [MODULE_02_AUTHENTICATION.md](./MODULE_02_AUTHENTICATION.md). The `/v1/auth/*` rows below remain PROPOSED and were not built.
 
 ---
 

@@ -107,9 +107,87 @@ button {
 }
 
 button:focus-visible,
-a:focus-visible {
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
+}
+
+.account-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.1rem;
+  margin: 1.25rem 0 0;
+}
+
+.account-nav a {
+  color: var(--accent);
+}
+
+form {
+  margin-top: 1.5rem;
+}
+
+label {
+  display: block;
+  margin-top: 0.9rem;
+  color: var(--muted);
+}
+
+input,
+select {
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.55rem 0.7rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  font: inherit;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+button.primary {
+  background: var(--accent);
+  color: #1a140c;
+  border-color: transparent;
+}
+
+button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.alert {
+  margin-top: 1rem;
+}
+
+.session-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.session-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.secret-block {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 0.92rem;
 }
 
 dl {

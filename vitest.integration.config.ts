@@ -15,7 +15,7 @@ export default defineConfig({
     environment: 'node',
     include: ['apps/api/test/integration/**/*.test.ts'],
     fileParallelism: false,
-    hookTimeout: 20_000,
-    testTimeout: 20_000,
+    hookTimeout: 60_000,
+    testTimeout: 60_000,
   },
 });

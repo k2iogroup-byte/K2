@@ -7,7 +7,7 @@ import { ServiceWorkerRegister } from '../components/service-worker-register';
 
 export const metadata: Metadata = {
   title: 'K2 Group',
-  description: 'K2 Group platform foundation. No trading, accounts, or payments in this module.',
+  description: 'K2 Group account access. No trading or payments in this module.',
   applicationName: 'K2 Group',
   manifest: '/manifest.webmanifest',
   icons: { icon: '/icon.svg' },

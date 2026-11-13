@@ -2,7 +2,7 @@
 
 K2 Group is an international proprietary trading firm in development. This repository holds the business documentation and the Module 01 technical foundation for a web-based Challenge platform.
 
-Module 01 is a modular monolith with a separate frontend and backend. It does not implement authentication, payments, trading, or Challenge rules. Confirmed business rules stay in `docs/` and were not rewritten by this module.
+Module 01 is a modular monolith with a separate frontend and backend. Module 02 adds authentication and user management. The repository does not implement payments, trading, or Challenge rules. Confirmed business rules stay in `docs/` and were not rewritten by these modules. See [docs/MODULE_02_AUTHENTICATION.md](docs/MODULE_02_AUTHENTICATION.md).
 
 ## Start here
 

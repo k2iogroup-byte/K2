@@ -16,3 +16,4 @@ blob-report/
 *.tsbuildinfo
 *.pem
 *.key
+.email-outbox
