@@ -75,6 +75,20 @@ describe('application startup and health', () => {
     });
     expect(oversized.status).toBe(413);
     expect(await oversized.text()).not.toContain('xxxxx');
+
+    const preflight = await fetch(`http://127.0.0.1:${port}/health`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'http://127.0.0.1:3000',
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'content-type, idempotency-key, x-csrf-token',
+      },
+    });
+    expect(preflight.status).toBe(204);
+    const allowed = preflight.headers.get('access-control-allow-headers') ?? '';
+    expect(allowed.toLowerCase()).toContain('idempotency-key');
+    expect(allowed.toLowerCase()).toContain('x-csrf-token');
+    expect(allowed.toLowerCase()).not.toContain('proxy-authorization');
     await app.close();
   });
 

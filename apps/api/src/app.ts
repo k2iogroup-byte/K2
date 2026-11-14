@@ -70,7 +70,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       callback(null, isAllowedOrigin(origin, options.config.corsOrigins));
     },
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['content-type', 'x-request-id', 'x-k2-request', 'x-csrf-token'],
+    allowedHeaders: [
+      'content-type',
+      'x-request-id',
+      'x-k2-request',
+      'x-csrf-token',
+      'idempotency-key',
+    ],
     credentials: true,
     maxAge: 600,
   });

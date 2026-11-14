@@ -75,6 +75,43 @@ describe('API proxy route', () => {
     expect(down.status).toBe(502);
     expect(await down.text()).toBe('The API is unavailable');
   });
+
+  it('forwards idempotency-key regardless of header case and drops hop-by-hop headers', async () => {
+    process.env.API_PROXY_DESTINATION = 'http://127.0.0.1:4000';
+    let seenIdempotency = '';
+    let connection: string | null = null;
+    let transferEncoding: string | null = null;
+    let upgrade: string | null = null;
+    let proxyAuthorization: string | null = null;
+    globalThis.fetch = (_input, init) => {
+      const headers = new Headers(init?.headers);
+      seenIdempotency = headers.get('idempotency-key') ?? '';
+      connection = headers.get('connection');
+      transferEncoding = headers.get('transfer-encoding');
+      upgrade = headers.get('upgrade');
+      proxyAuthorization = headers.get('proxy-authorization');
+      return Promise.resolve(new Response('ok', { status: 200 }));
+    };
+    const response = await GET(
+      new Request('http://web.local/k2-api/market-data/bars', {
+        headers: {
+          'Idempotency-Key': 'order-key-0123456789abcd',
+          Connection: 'keep-alive',
+          'Transfer-Encoding': 'chunked',
+          Upgrade: 'websocket',
+          'Proxy-Authorization': 'Basic c2VjcmV0',
+          cookie: 'k2_session=abc',
+        },
+      }),
+      marketContext(),
+    );
+    expect(response.status).toBe(200);
+    expect(seenIdempotency).toBe('order-key-0123456789abcd');
+    expect(connection).toBeNull();
+    expect(transferEncoding).toBeNull();
+    expect(upgrade).toBeNull();
+    expect(proxyAuthorization).toBeNull();
+  });
 });
 
 function requestUrl(input: RequestInfo | URL): string {

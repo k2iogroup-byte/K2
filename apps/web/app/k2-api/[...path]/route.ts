@@ -10,6 +10,7 @@ const REQUEST_HEADERS = [
   'x-k2-request',
   'x-csrf-token',
   'x-request-id',
+  'idempotency-key',
 ];
 const RESPONSE_HEADERS = ['content-type', 'cache-control', 'pragma', 'x-request-id', 'retry-after'];
 
