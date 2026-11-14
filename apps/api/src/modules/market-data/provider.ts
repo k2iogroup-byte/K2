@@ -1,5 +1,6 @@
 import type { PriceOrigin } from '@k2/shared';
 
+import { BinancePublicProvider } from './binance-public-provider.js';
 import type { RawProviderEvent } from './engine.js';
 
 /** Provider adapters stay outside the rest of the platform. None opens a network connection. */
@@ -29,7 +30,10 @@ export class TestFixtureProvider implements MarketDataProvider {
   }
 }
 
-export function createProvider(mode: 'disconnected' | 'test-fixture'): MarketDataProvider | null {
+export function createProvider(
+  mode: 'disconnected' | 'test-fixture' | 'binance-public',
+): MarketDataProvider | null {
   if (mode === 'disconnected') return null;
+  if (mode === 'binance-public') return new BinancePublicProvider();
   return new TestFixtureProvider('test-fixture');
 }

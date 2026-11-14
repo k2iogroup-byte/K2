@@ -5,7 +5,7 @@ export type LogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
 export type DatabaseSslMode = 'disable' | 'no-verify' | 'verify';
 
 export type EmailDeliveryMode = 'capture' | 'unconfigured' | 'smtp';
-export type MarketDataMode = 'disconnected' | 'test-fixture';
+export type MarketDataMode = 'disconnected' | 'test-fixture' | 'binance-public';
 
 /** `true` is intentionally absent. A hop count is not "trust every forwarded header". */
 export type TrustProxySetting =
@@ -132,7 +132,7 @@ export function loadConfig(env: Env): AppConfig {
     emailDelivery === null
       ? null
       : readOutboxPath(env.EMAIL_OUTBOX_PATH, emailDelivery.mode, issues);
-  const marketDataMode = readMarketDataMode(env.MARKET_DATA_MODE, appEnv, issues);
+  const marketDataMode = readMarketDataMode(env, appEnv, issues);
   const trustProxy = readTrustProxy(env.TRUST_PROXY, issues);
 
   if (appEnv && database && databaseSsl) {
@@ -236,15 +236,23 @@ function isIpOrCidr(value: string): boolean {
 }
 
 function readMarketDataMode(
-  raw: string | undefined,
+  env: Env,
   appEnv: AppEnv | null,
   issues: ConfigIssue[],
 ): MarketDataMode | null {
+  const raw = env.MARKET_DATA_MODE;
   const value = raw === undefined || raw.trim() === '' ? 'disconnected' : raw.trim();
-  if (value !== 'disconnected' && value !== 'test-fixture') {
+  if (value !== 'disconnected' && value !== 'test-fixture' && value !== 'binance-public') {
     issues.push({
       path: 'MARKET_DATA_MODE',
-      message: 'must be disconnected or test-fixture',
+      message: 'must be disconnected, test-fixture, or binance-public',
+    });
+    return null;
+  }
+  if (env.BINANCE_API_KEY?.trim() || env.BINANCE_API_SECRET?.trim()) {
+    issues.push({
+      path: 'BINANCE_API_KEY',
+      message: 'public market data must not use an API key or secret',
     });
     return null;
   }
@@ -252,6 +260,25 @@ function readMarketDataMode(
     issues.push({
       path: 'MARKET_DATA_MODE',
       message: 'test fixtures are rejected outside development',
+    });
+    return null;
+  }
+  if (value === 'binance-public' && appEnv === 'staging' && env.BINANCE_PUBLIC_TESTING !== 'yes') {
+    issues.push({
+      path: 'MARKET_DATA_MODE',
+      message: 'binance-public on staging requires BINANCE_PUBLIC_TESTING=yes',
+    });
+    return null;
+  }
+  if (
+    value === 'binance-public' &&
+    appEnv === 'production' &&
+    (env.BINANCE_COMMERCIAL_REDISTRIBUTION !== 'approved' ||
+      !env.BINANCE_REDISTRIBUTION_RECORD?.trim())
+  ) {
+    issues.push({
+      path: 'MARKET_DATA_MODE',
+      message: 'binance-public is refused in production without a redistribution approval record',
     });
     return null;
   }

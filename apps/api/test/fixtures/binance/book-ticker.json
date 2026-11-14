@@ -1,0 +1,10 @@
+{
+  "fixture": "RECORDED_FIXTURE_NOT_LIVE_MARKET_DATA",
+  "note": "Recorded bookTicker shape for tests. Not a live Binance price and not an exchange execution.",
+  "u": "400900217",
+  "s": "BTCUSDT",
+  "b": "65000.10",
+  "B": "0.50000000",
+  "a": "65000.20",
+  "A": "0.50000000"
+}

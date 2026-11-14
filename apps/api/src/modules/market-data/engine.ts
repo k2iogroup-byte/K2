@@ -45,6 +45,8 @@ export type RawQuote = {
   last: string | null;
   sourceTimestamp: string;
   sequence: number;
+  /** Decimal string identity. BookTicker `u` is copied here and is not a JavaScript number. */
+  quoteUpdateId?: string;
 };
 
 export type RawTrade = {
@@ -73,6 +75,7 @@ export type NormalisedQuote = {
   receivedTimestamp: string;
   processedTimestamp: string;
   sequence: number;
+  quoteUpdateId: string;
   providerEventId: string;
   priceOrigin: PriceOrigin;
 };
@@ -172,6 +175,8 @@ export class MarketDataEngine {
     private readonly options: {
       providerId: string;
       priceOrigin: PriceOrigin;
+      /** Stays false until a licensing change explicitly allows a live-data claim. */
+      claimLiveMarketData?: boolean;
       clock?: () => Date;
       staleAfterMs?: { EQUITIES: number; CRYPTO: number };
       sink?: MarketDataSink;
@@ -206,7 +211,9 @@ export class MarketDataEngine {
     return {
       feedState: state,
       priceOrigin: this.options.priceOrigin,
-      liveMarketData: liveMarketDataClaim(this.options.priceOrigin, state),
+      liveMarketData:
+        this.options.claimLiveMarketData === true &&
+        liveMarketDataClaim(this.options.priceOrigin, state),
       providerId: this.options.providerId,
       redistributionLicensed: false,
       detail: this.detail(state),
@@ -345,6 +352,7 @@ export class MarketDataEngine {
       receivedTimestamp: receivedAt.toISOString(),
       processedTimestamp: processed.toISOString(),
       sequence: event.sequence,
+      quoteUpdateId: event.quoteUpdateId ?? String(event.sequence),
       providerEventId: event.providerEventId,
       priceOrigin: this.options.priceOrigin,
     };

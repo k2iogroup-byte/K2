@@ -102,7 +102,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const engine = new MarketDataEngine(
       {
         providerId: provider?.id ?? 'none',
-        priceOrigin: 'TEST_FIXTURE',
+        priceOrigin: provider?.priceOrigin ?? 'TEST_FIXTURE',
+        claimLiveMarketData: false,
         sink: store,
       },
       instruments,
