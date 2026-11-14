@@ -78,10 +78,17 @@ describe('database connectivity and migrations', () => {
     await before.app.close();
 
     const applied = await migrateUp(pool, directory);
-    expect(applied).toEqual(['0001', '0002', '0003', '0004', '0005']);
+    expect(applied).toEqual(['0001', '0002', '0003', '0004', '0005', '0006']);
     expect(await migrateUp(pool, directory)).toEqual([]);
     const status = await migrationStatus(pool, directory);
-    expect(status.map((entry) => entry.version)).toEqual(['0001', '0002', '0003', '0004', '0005']);
+    expect(status.map((entry) => entry.version)).toEqual([
+      '0001',
+      '0002',
+      '0003',
+      '0004',
+      '0005',
+      '0006',
+    ]);
     expect(status.every((entry) => entry.state === 'applied')).toBe(true);
 
     const runtime = await startServer(
@@ -104,6 +111,11 @@ describe('database connectivity and migrations', () => {
     });
     await worker.close();
 
+    expect(await migrateDown(pool, directory)).toBe('0006');
+    const tradingGone = await pool.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'liquidity_levels'",
+    );
+    expect(tradingGone.rowCount).toBe(0);
     expect(await migrateDown(pool, directory)).toBe('0005');
     expect(await migrateDown(pool, directory)).toBe('0004');
     expect(await migrateDown(pool, directory)).toBe('0003');
@@ -117,7 +129,65 @@ describe('database connectivity and migrations', () => {
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'",
     );
     expect(tables.rows.map((row) => row.table_name).sort()).toEqual(['schema_migrations']);
-    expect(await migrateUp(pool, directory)).toEqual(['0001', '0002', '0003', '0004', '0005']);
+    expect(await migrateUp(pool, directory)).toEqual([
+      '0001',
+      '0002',
+      '0003',
+      '0004',
+      '0005',
+      '0006',
+    ]);
+  });
+
+  it('rolls migration 0006 back and applies it again', async () => {
+    const directory = path.join(apiPackageRoot(), 'db', 'migrations');
+    await migrateUp(pool, directory);
+    expect(await migrateDown(pool, directory)).toBe('0006');
+    const dropped = await pool.query(
+      "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'orders'",
+    );
+    expect(dropped.rowCount).toBe(0);
+    const column = await pool.query(
+      "SELECT 1 FROM information_schema.columns WHERE table_name = 'instruments' AND column_name = 'trading_status'",
+    );
+    expect(column.rowCount).toBe(0);
+    expect(await migrateUp(pool, directory)).toEqual(['0006']);
+
+    const instrument = await pool.query<{ id: string }>(
+      `INSERT INTO instruments (
+         market, venue, symbol, provider_symbol, price_scale, quantity_scale, quote_asset
+       ) VALUES ('CRYPTO', 'BINANCE_SPOT', 'BTCUSDT', 'btcusdt', 2, 8, 'USDT')
+       RETURNING id`,
+    );
+    const instrumentId = instrument.rows[0]?.id;
+    if (!instrumentId) throw new Error('instrument insert returned no id');
+    const status = await pool.query<{ trading_status: string }>(
+      'SELECT trading_status FROM instruments WHERE id = $1',
+      [instrumentId],
+    );
+    expect(status.rows[0]?.trading_status).toBe('DISABLED');
+    await pool.query(
+      `INSERT INTO instrument_quote_cursors (instrument_id, source, last_update_id)
+       VALUES ($1, 'test-fixture', '10')`,
+      [instrumentId],
+    );
+    await pool.query(
+      `INSERT INTO liquidity_levels (
+         instrument_id, source, book_side, price, quote_update_id, displayed_qty, consumed_qty
+       ) VALUES ($1, 'test-fixture', 'ASK', 100, '10', 0.5, 0.2)`,
+      [instrumentId],
+    );
+    const level = await pool.query<{ displayed_qty: string; consumed_qty: string }>(
+      `SELECT displayed_qty::text, consumed_qty::text
+       FROM liquidity_levels WHERE instrument_id = $1`,
+      [instrumentId],
+    );
+    expect(level.rows[0]?.displayed_qty).toBe('0.50000000');
+    expect(level.rows[0]?.consumed_qty).toBe('0.20000000');
+    const sequence = await pool.query<{ next: string }>(
+      "SELECT nextval('order_accept_sequence')::text AS next",
+    );
+    expect(Number(sequence.rows[0]?.next)).toBeGreaterThan(0);
   });
 
   it('rolls back a failed migration and refuses a changed checksum', async () => {
@@ -167,7 +237,14 @@ describe('database connectivity and migrations', () => {
   it('fails readiness for a missing migration, a bad checksum, a wrong marker, or a dead database', async () => {
     await resetPublicSchema();
     const directory = path.join(apiPackageRoot(), 'db', 'migrations');
-    expect(await migrateUp(pool, directory)).toEqual(['0001', '0002', '0003', '0004', '0005']);
+    expect(await migrateUp(pool, directory)).toEqual([
+      '0001',
+      '0002',
+      '0003',
+      '0004',
+      '0005',
+      '0006',
+    ]);
     expect(await migrateUp(pool, directory)).toEqual([]);
 
     const healthy = await listen();
