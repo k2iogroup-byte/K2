@@ -21,8 +21,13 @@ import {
   type RiskDecision,
   type SessionCalendar,
 } from './risk-authorizer.js';
+import type { TradingLock } from './singleton.js';
 
 const MONEY = 4;
+/**
+ * Opening commission on buy notional. Founder approval 2026-11-21.
+ * Closing commission stays zero. The rate applies only when the market is in scope.
+ */
 const OPENING_COMMISSION_PCT = '0.5000';
 
 export class TradingNotFoundError extends Error {
@@ -108,12 +113,14 @@ export type TradingServiceOptions = {
   authorizer?: RiskAuthorizer;
   calendar?: SessionCalendar;
   fillsEnabled?: boolean;
+  lock?: TradingLock;
 };
 
 export class TradingService {
   private readonly authorizer: RiskAuthorizer;
   private readonly calendar: SessionCalendar;
   private readonly fillsEnabled: boolean;
+  private readonly lock: TradingLock | null;
 
   constructor(
     private readonly pool: Pool,
@@ -122,9 +129,13 @@ export class TradingService {
     this.authorizer = options.authorizer ?? new FailClosedRiskAuthorizer();
     this.calendar = options.calendar ?? new ClosedEquityCalendar();
     this.fillsEnabled = options.fillsEnabled ?? false;
+    this.lock = options.lock ?? null;
   }
 
   async submit(input: OrderInput): Promise<TradingOrderResult> {
+    if (input.quote && this.fillsEnabled && this.tradingOpen()) {
+      await this.drainQueue(input.instrumentId, input.quote);
+    }
     try {
       return await this.transaction(async (client) => this.submitLocked(client, input));
     } catch (error) {
@@ -139,6 +150,12 @@ export class TradingService {
       }
       return stored.response;
     }
+  }
+
+  /** Fill resting orders for this instrument in accept_sequence order. */
+  async applyQuote(instrumentId: string, quote: ExecutableQuote): Promise<readonly string[]> {
+    if (!this.fillsEnabled || !this.tradingOpen()) return [];
+    return this.drainQueue(instrumentId, quote);
   }
 
   async position(accountId: string, instrumentId: string): Promise<PositionView | null> {
@@ -255,6 +272,15 @@ export class TradingService {
     const reject = this.precheck(input, locked.state, instrument);
     if (reject)
       return this.persistReject(client, input, locked.initial_capital, instrument, reject);
+    if (this.lock && !this.lock.fillsAllowed()) {
+      return this.persistReject(
+        client,
+        input,
+        locked.initial_capital,
+        instrument,
+        'TRADING_LOCK_LOST',
+      );
+    }
 
     const position = await this.lockPosition(client, input.accountId, input.instrumentId);
     const positionReject = await this.positionRule(client, input, instrument, position);
@@ -426,6 +452,17 @@ export class TradingService {
       );
     }
 
+    if (this.lock && !this.lock.fillsAllowed()) {
+      return this.persistReject(
+        client,
+        input,
+        initialCapital,
+        instrument,
+        'TRADING_LOCK_LOST',
+        decision,
+        cash.cash,
+      );
+    }
     let taken: LiquidityTake | null = null;
     if (marketable) {
       taken = await takeLiquidity(client, {
@@ -868,13 +905,14 @@ export class TradingService {
       notional: string;
       fee: string;
       quote: ExecutableQuote;
+      sequenceNo?: number;
     },
   ): Promise<string> {
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO executions (
          order_id, account_id, instrument_id, sequence_no, quantity, price, notional, commission,
          quote_update_id, received_at, price_origin, live_market_data, execution_venue
-       ) VALUES ($1, $2, $3, 1, $4, $5, $6, $7, $8, $9, $10, false, 'K2_SIMULATION')
+       ) VALUES ($1, $2, $3, $11, $4, $5, $6, $7, $8, $9, $10, false, 'K2_SIMULATION')
        RETURNING id`,
       [
         args.orderId,
@@ -887,6 +925,7 @@ export class TradingService {
         args.quote.quoteUpdateId,
         args.quote.receivedAt,
         args.quote.priceOrigin,
+        args.sequenceNo ?? 1,
       ],
     );
     const id = inserted.rows[0]?.id;
@@ -1007,6 +1046,250 @@ export class TradingService {
       [key],
     );
     return result.rows[0] ?? null;
+  }
+
+  private tradingOpen(): boolean {
+    return this.lock === null || this.lock.fillsAllowed();
+  }
+
+  private async drainQueue(instrumentId: string, quote: ExecutableQuote): Promise<string[]> {
+    const waiting = await this.pool.query<{ id: string }>(
+      `SELECT id FROM orders
+       WHERE instrument_id = $1 AND state IN ('OPEN', 'PARTIALLY_FILLED')
+       ORDER BY accept_sequence`,
+      [instrumentId],
+    );
+    const filled: string[] = [];
+    for (const row of waiting.rows) {
+      if (!this.tradingOpen()) break;
+      const did = await this.transaction((client) => this.fillWorking(client, row.id, quote));
+      if (did) filled.push(row.id);
+    }
+    return filled;
+  }
+
+  private async fillWorking(
+    client: PoolClient,
+    orderId: string,
+    quote: ExecutableQuote,
+  ): Promise<boolean> {
+    if (!this.tradingOpen() || !this.fillsEnabled) return false;
+    const peek = await client.query<{ account_id: string }>(
+      'SELECT account_id FROM orders WHERE id = $1',
+      [orderId],
+    );
+    const accountId = peek.rows[0]?.account_id;
+    if (!accountId) return false;
+    const account = await client.query<{ initial_capital: string; state: string }>(
+      `SELECT initial_capital::text, state FROM trading_accounts WHERE id = $1 FOR UPDATE`,
+      [accountId],
+    );
+    const locked = account.rows[0];
+    if (!locked || locked.state !== 'ACTIVE') return false;
+    const orderResult = await client.query<{
+      user_id: string;
+      instrument_id: string;
+      client_order_id: string;
+      side: 'BUY' | 'SELL';
+      order_type: 'MARKET' | 'LIMIT';
+      state: string;
+      quantity: string;
+      filled_quantity: string;
+      limit_price: string | null;
+      cash_reserved: string;
+      sell_reserved: string;
+    }>(
+      `SELECT user_id, instrument_id, client_order_id, side, order_type, state,
+              quantity::text, filled_quantity::text, limit_price::text,
+              cash_reserved::text, sell_reserved::text
+       FROM orders WHERE id = $1 FOR UPDATE`,
+      [orderId],
+    );
+    const order = orderResult.rows[0];
+    if (!order || (order.state !== 'OPEN' && order.state !== 'PARTIALLY_FILLED')) return false;
+    const instrumentResult = await client.query<InstrumentRow>(
+      `SELECT market, quote_asset, trading_status, price_scale, quantity_scale
+       FROM instruments WHERE id = $1`,
+      [order.instrument_id],
+    );
+    const instrument = instrumentResult.rows[0];
+    if (!instrument) return false;
+    const priceScale = instrument.price_scale;
+    const qtyScale = instrument.quantity_scale;
+    const touch = canonicalDecimal(order.side === 'BUY' ? quote.ask : quote.bid, priceScale);
+    const limit = order.limit_price ? canonicalDecimal(order.limit_price, priceScale) : null;
+    const marketable =
+      order.order_type === 'MARKET' ||
+      (order.side === 'BUY'
+        ? !decimalLessThan(limit ?? touch, touch, priceScale)
+        : !decimalGreaterThan(limit ?? touch, touch, priceScale));
+    if (!marketable) return false;
+    const already = await client.query(
+      'SELECT 1 FROM executions WHERE order_id = $1 AND quote_update_id = $2',
+      [orderId, quote.quoteUpdateId],
+    );
+    if ((already.rowCount ?? 0) > 0) return false;
+    const remaining = subtractDecimals(order.quantity, order.filled_quantity, qtyScale);
+    if (!decimalGreaterThan(remaining, '0', qtyScale)) return false;
+    const displayed = canonicalDecimal(
+      order.side === 'BUY' ? quote.askSize : quote.bidSize,
+      qtyScale,
+    );
+    const taken = await takeLiquidity(client, {
+      instrumentId: order.instrument_id,
+      source: liquiditySource(quote.priceOrigin),
+      bookSide: order.side === 'BUY' ? 'ASK' : 'BID',
+      price: touch,
+      priceScale,
+      quoteUpdateId: quote.quoteUpdateId,
+      displayed,
+      want: remaining,
+      quantityScale: qtyScale,
+    });
+    if (!decimalGreaterThan(taken.quantity, '0', qtyScale)) return false;
+    const fillQty = taken.quantity;
+    const unfilled = subtractDecimals(remaining, fillQty, qtyScale);
+    const remainderRests =
+      order.order_type === 'LIMIT' && decimalGreaterThan(unfilled, '0', qtyScale);
+    const nextFilled = addDecimals(order.filled_quantity, fillQty, qtyScale);
+    const state = decimalsEqual(nextFilled, order.quantity, qtyScale)
+      ? 'FILLED'
+      : remainderRests
+        ? 'PARTIALLY_FILLED'
+        : 'CANCELLED';
+    const filledNotional = multiplyDecimals(touch, fillQty, priceScale, qtyScale, MONEY);
+    const filledFee = order.side === 'BUY' ? openingFee(filledNotional) : zero(MONEY);
+    const reservePrice = order.order_type === 'LIMIT' && limit ? limit : touch;
+    const newReserve =
+      order.side === 'BUY' && remainderRests
+        ? this.cashNeed('BUY', unfilled, reservePrice, priceScale, qtyScale)
+        : zero(MONEY);
+    const newSellReserved =
+      order.side === 'SELL' && state === 'PARTIALLY_FILLED' ? unfilled : zero(qtyScale);
+    const cash = await this.lockCash(client, accountId, locked.initial_capital);
+    const spent = addDecimals(filledNotional, filledFee, MONEY);
+    const nextCash =
+      order.side === 'BUY'
+        ? subtractDecimals(cash.cash, spent, MONEY)
+        : addDecimals(cash.cash, filledNotional, MONEY);
+    const released =
+      order.side === 'BUY' ? canonicalDecimal(order.cash_reserved, MONEY) : zero(MONEY);
+    const nextReserved = addDecimals(
+      subtractDecimals(cash.reserved, released, MONEY),
+      newReserve,
+      MONEY,
+    );
+    if (decimalLessThan(nextCash, '0', MONEY) || decimalLessThan(nextCash, nextReserved, MONEY)) {
+      throw new Error('resting fill would break the cash projection');
+    }
+    await client.query(
+      `UPDATE orders
+       SET state = $2, filled_quantity = $3, cash_reserved = $4, sell_reserved = $5,
+           updated_at = now(), version = version + 1
+       WHERE id = $1`,
+      [orderId, state, nextFilled, newReserve, newSellReserved],
+    );
+    await this.recordTransition(
+      client,
+      orderId,
+      order.state,
+      state,
+      `quote:${quote.quoteUpdateId}`,
+      order.user_id,
+    );
+    const sequence = await client.query<{ next: number }>(
+      'SELECT COALESCE(MAX(sequence_no), 0) + 1 AS next FROM executions WHERE order_id = $1',
+      [orderId],
+    );
+    const input: OrderInput = {
+      accountId,
+      userId: order.user_id,
+      instrumentId: order.instrument_id,
+      clientOrderId: order.client_order_id,
+      idempotencyKey: `quote:${orderId}:${quote.quoteUpdateId}`,
+      side: order.side,
+      orderType: order.order_type,
+      quantity: order.quantity,
+      limitPrice: order.limit_price,
+      quote,
+    };
+    const executionId = await this.insertExecution(client, {
+      orderId,
+      input,
+      instrumentId: order.instrument_id,
+      fillQty,
+      fillPrice: touch,
+      notional: filledNotional,
+      fee: filledFee,
+      quote,
+      sequenceNo: sequence.rows[0]?.next ?? 1,
+    });
+    const position = await this.lockPosition(client, accountId, order.instrument_id);
+    if (order.side === 'BUY') {
+      await this.applyPosition(client, {
+        input,
+        instrument,
+        position,
+        fillQty,
+        fillPrice: touch,
+        notional: filledNotional,
+        executionId,
+        sellReserved: zero(qtyScale),
+      });
+    } else if (position) {
+      const nextQty = subtractDecimals(position.quantity, fillQty, qtyScale);
+      const reduced = subtractDecimals(position.reserved_sell, fillQty, qtyScale);
+      const reservedSell = decimalLessThan(reduced, '0', qtyScale) ? zero(qtyScale) : reduced;
+      const closed =
+        !decimalGreaterThan(nextQty, '0', qtyScale) &&
+        !decimalGreaterThan(reservedSell, '0', qtyScale);
+      await client.query(
+        `UPDATE positions
+         SET status = $2, quantity = $3, reserved_sell = $4, updated_at = now(),
+             closed_at = CASE WHEN $2 = 'CLOSED' THEN now() ELSE closed_at END
+         WHERE id = $1`,
+        [position.id, closed ? 'CLOSED' : 'OPEN', nextQty, reservedSell],
+      );
+    }
+    await this.outbox(client, accountId, executionId, filledNotional, filledFee);
+    await client.query(
+      `INSERT INTO liquidity_allocations (
+         execution_id, instrument_id, book_side, price, displayed_qty, consumed_before,
+         take_qty, consumed_after, accept_sequence, quote_update_id
+       )
+       SELECT $1, $2, $3, $4, $5, $6, $7, $8, accept_sequence, $9
+       FROM orders WHERE id = $10`,
+      [
+        executionId,
+        order.instrument_id,
+        taken.bookSide,
+        taken.price,
+        taken.displayed,
+        taken.consumedBefore,
+        taken.quantity,
+        taken.consumedAfter,
+        taken.quoteUpdateId,
+        orderId,
+      ],
+    );
+    await client.query(
+      `UPDATE simulation_cash_projections
+       SET cash = $2, reserved_cash = $3, event_sequence = event_sequence + 1, updated_at = now()
+       WHERE account_id = $1`,
+      [accountId, nextCash, nextReserved],
+    );
+    if (!decimalsEqual(nextCash, cash.cash, MONEY)) {
+      await client.query(
+        `INSERT INTO simulation_cash_movements (movement_key, account_id, amount)
+         VALUES ($1, $2, $3)`,
+        [
+          `cash:${orderId}:${quote.quoteUpdateId}`,
+          accountId,
+          subtractDecimals(nextCash, cash.cash, MONEY),
+        ],
+      );
+    }
+    return true;
   }
 
   private async transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {

@@ -6,9 +6,12 @@ import type { AppConfig } from '../../config/env.js';
 import type { DatabaseProbe } from '../../infrastructure/db/probe.js';
 import { parseWithSchema } from '../../infrastructure/http/validation.js';
 
+export type TradingLockStatus = 'held' | 'unavailable' | 'lost' | 'not_required';
+
 export type HealthRouteOptions = {
   config: Pick<AppConfig, 'serviceName' | 'serviceVersion' | 'appEnv'>;
   database: DatabaseProbe;
+  tradingLockStatus?: () => TradingLockStatus;
 };
 
 export function registerHealthRoutes(app: FastifyInstance, options: HealthRouteOptions): void {
@@ -20,7 +23,9 @@ export function registerHealthRoutes(app: FastifyInstance, options: HealthRouteO
     } catch {
       check = { reachable: false, migrated: false, latencyMs: 0, schemaVersion: null };
     }
-    const ready = check.reachable && check.migrated;
+    const tradingLock = options.tradingLockStatus?.() ?? 'not_required';
+    const lockReady = tradingLock === 'held' || tradingLock === 'not_required';
+    const ready = check.reachable && check.migrated && lockReady;
     const body = {
       status: ready ? 'ok' : 'degraded',
       service: options.config.serviceName,
@@ -32,6 +37,7 @@ export function registerHealthRoutes(app: FastifyInstance, options: HealthRouteO
           latencyMs: check.latencyMs,
           schemaVersion: check.schemaVersion,
         },
+        tradingLock: { status: tradingLock },
       },
       timestamp: new Date().toISOString(),
     };

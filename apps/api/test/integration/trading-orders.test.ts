@@ -12,12 +12,14 @@ import type {
   RiskDecision,
   SessionCalendar,
 } from '../../src/modules/trading/risk-authorizer.js';
-import { tryHoldSingleton } from '../../src/modules/trading/singleton.js';
+import { type TradingLock,tryHoldSingleton } from '../../src/modules/trading/singleton.js';
 import {
   type ExecutableQuote,
   type OrderInput,
   TradingService,
 } from '../../src/modules/trading/trading-service.js';
+import { startServer } from '../../src/server.js';
+import { validEnv } from '../valid-env.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error('Set TEST_DATABASE_URL to a database whose name ends with _test');
@@ -77,6 +79,15 @@ function order(
     quote: quote(),
     ...overrides,
   };
+}
+
+function gated(lock: TradingLock): TradingService {
+  return new TradingService(pool, {
+    authorizer: new ApprovingRiskAuthorizer(),
+    calendar: new OpenEquityCalendar(),
+    fillsEnabled: true,
+    lock,
+  });
 }
 
 function engine(fillsEnabled = true, approve = true): TradingService {
@@ -339,6 +350,115 @@ describe('trading orders on postgres', () => {
     expect(after.rows.map((row) => row.accept_sequence)).toEqual(
       before.rows.map((row) => row.accept_sequence),
     );
+  });
+
+  it('fills resting orders in accept sequence and does not let a later buy jump ahead', async () => {
+    const first = await makeAccount('EQUITIES', 'USD');
+    const second = await makeAccount('EQUITIES', 'USD', first.instrumentId);
+    const third = await makeAccount('EQUITIES', 'USD', first.instrumentId);
+    const service = engine();
+    const resting = quote({ ask: '11.00', askSize: '5.00000000' });
+    await service.submit(
+      order(first, {
+        orderType: 'LIMIT',
+        limitPrice: '10.00',
+        quote: quote({ ...resting, quoteUpdateId: '710' }),
+      }),
+    );
+    await service.submit(
+      order(second, {
+        orderType: 'LIMIT',
+        limitPrice: '10.00',
+        quote: quote({ ...resting, quoteUpdateId: '711' }),
+      }),
+    );
+    const walked = await service.applyQuote(
+      first.instrumentId,
+      quote({ ask: '10.00', askSize: '0.50000000', quoteUpdateId: '720' }),
+    );
+    expect(walked).toHaveLength(1);
+    const quantities = await pool.query<{ client_order_id: string; filled_quantity: string }>(
+      `SELECT client_order_id, filled_quantity::text
+       FROM orders WHERE instrument_id = $1 AND side = 'BUY'
+       ORDER BY accept_sequence`,
+      [first.instrumentId],
+    );
+    expect(quantities.rows.map((row) => row.filled_quantity)).toEqual(['0.50000000', '0.00000000']);
+
+    const later = await service.submit(
+      order(third, {
+        quote: quote({ ask: '10.00', askSize: '1.00000000', quoteUpdateId: '730' }),
+      }),
+    );
+    expect(later.rejectReason).toBe('NO_LIQUIDITY');
+    const after = await pool.query<{ filled_quantity: string }>(
+      `SELECT filled_quantity::text FROM orders
+       WHERE instrument_id = $1 AND side = 'BUY'
+       ORDER BY accept_sequence`,
+      [first.instrumentId],
+    );
+    expect(after.rows.map((row) => row.filled_quantity)).toEqual([
+      '1.00000000',
+      '0.00000000',
+      '0.00000000',
+    ]);
+  });
+
+  it('stops fills when the process does not hold the trading lock', async () => {
+    const env = validEnv({
+      DATABASE_URL: databaseUrl,
+      PORT: '0',
+      HOST: '127.0.0.1',
+    }) as NodeJS.ProcessEnv;
+    const first = await startServer(env);
+    const second = await startServer(env);
+    try {
+      const firstAddress = first.app.server.address();
+      const secondAddress = second.app.server.address();
+      const firstPort = typeof firstAddress === 'object' && firstAddress ? firstAddress.port : 0;
+      const secondPort = typeof secondAddress === 'object' && secondAddress ? secondAddress.port : 0;
+      const held = (await (await fetch(`http://127.0.0.1:${firstPort}/health`)).json()) as {
+        status: string;
+        checks: { tradingLock: { status: string } };
+      };
+      const blocked = (await (await fetch(`http://127.0.0.1:${secondPort}/health`)).json()) as {
+        status: string;
+        checks: { tradingLock: { status: string } };
+      };
+      expect(held).toMatchObject({
+        status: 'ok',
+        checks: { tradingLock: { status: 'held' } },
+      });
+      expect(blocked).toMatchObject({
+        status: 'degraded',
+        checks: { tradingLock: { status: 'unavailable' } },
+      });
+      const ids = await makeAccount('EQUITIES', 'USD');
+      const primary = gated(first.tradingLock);
+      const other = gated(second.tradingLock);
+      const filled = await primary.submit(order(ids, { quote: quote({ quoteUpdateId: '810' }) }));
+      expect(filled.rejectReason).toBeNull();
+      const denied = await other.submit(
+        order(await makeAccount('EQUITIES', 'USD', ids.instrumentId), {
+          quote: quote({ quoteUpdateId: '811' }),
+        }),
+      );
+      expect(denied.rejectReason).toBe('TRADING_LOCK_LOST');
+      await first.tradingLock.drop();
+      const dropped = (await (await fetch(`http://127.0.0.1:${firstPort}/health`)).json()) as {
+        checks: { tradingLock: { status: string } };
+      };
+      expect(dropped.checks.tradingLock.status).toBe('lost');
+      const stopped = await primary.submit(
+        order(await makeAccount('EQUITIES', 'USD', ids.instrumentId), {
+          quote: quote({ quoteUpdateId: '812' }),
+        }),
+      );
+      expect(stopped.rejectReason).toBe('TRADING_LOCK_LOST');
+    } finally {
+      await first.app.close();
+      await second.app.close();
+    }
   });
 
   it('lets only one dedicated connection hold the trading lock', async () => {

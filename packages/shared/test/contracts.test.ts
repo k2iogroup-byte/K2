@@ -9,6 +9,7 @@ const health = {
   environment: 'development',
   checks: {
     database: { status: 'up', latencyMs: 3, schemaVersion: '0001' },
+    tradingLock: { status: 'held' },
   },
   timestamp: '2026-11-13T00:00:00.000Z',
 };

@@ -79,6 +79,10 @@ function renderState(state: PanelState): ReactElement {
         <dd>{health.checks.database.status === 'up' ? 'Up' : 'Down'}</dd>
       </div>
       <div>
+        <dt>Trading lock</dt>
+        <dd>{health.checks.tradingLock.status}</dd>
+      </div>
+      <div>
         <dt>Schema</dt>
         <dd>{health.checks.database.schemaVersion ?? 'Not migrated'}</dd>
       </div>

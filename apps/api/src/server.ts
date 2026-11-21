@@ -6,10 +6,12 @@ import { type AppConfig, loadConfig } from './config/env.js';
 import { createPool } from './infrastructure/db/pool.js';
 import { PgDatabaseProbe } from './infrastructure/db/probe.js';
 import { createLogger, loggerOptions } from './infrastructure/logging/logger.js';
+import { TradingLock } from './modules/trading/singleton.js';
 
 export type ServerRuntime = {
   app: FastifyInstance;
   config: AppConfig;
+  tradingLock: TradingLock;
 };
 
 export async function startServer(
@@ -24,18 +26,22 @@ export async function startServer(
     ? { ...loggerOptions(config), stream: options.logStream }
     : loggerOptions(config);
   const pool = createPool(config, logger);
+  const tradingLock = new TradingLock();
   let poolClosed = false;
   const closePool = async (): Promise<void> => {
     if (poolClosed) return;
     poolClosed = true;
+    await tradingLock.release();
     await pool.end();
   };
   try {
+    await tradingLock.acquire(config.databaseUrl);
     const app = await buildApp({
       config,
       logger: fastifyLogger,
       database: new PgDatabaseProbe(pool, logger),
       pool,
+      tradingLock,
     });
     app.addHook('onClose', closePool);
     try {
@@ -51,7 +57,7 @@ export async function startServer(
       { event: 'server_started', host: config.host, port, appEnv: config.appEnv },
       'server started',
     );
-    return { app, config };
+    return { app, config, tradingLock };
   } catch (error) {
     await closePool();
     throw error;

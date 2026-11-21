@@ -22,6 +22,7 @@ import { registerMarketDataRoutes } from './modules/market-data/market-data-rout
 import { registerMarketDataSocket } from './modules/market-data/market-data-ws.js';
 import { createProvider } from './modules/market-data/provider.js';
 import { MarketDataStore } from './modules/market-data/store.js';
+import type { TradingLock } from './modules/trading/singleton.js';
 
 const BODY_LIMIT_BYTES = 16 * 1024;
 
@@ -34,6 +35,7 @@ export type BuildAppOptions = {
   sleep?: (ms: number) => Promise<void>;
   logger?: FastifyServerOptions['logger'];
   connections?: ConnectionLimiter;
+  tradingLock?: TradingLock;
 };
 
 export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
@@ -86,7 +88,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
 
   installErrorHandling(app);
-  registerHealthRoutes(app, { config: options.config, database: options.database });
+  registerHealthRoutes(app, {
+    config: options.config,
+    database: options.database,
+    tradingLockStatus: () => options.tradingLock?.state() ?? 'not_required',
+  });
   if (options.pool) {
     const auth = registerAuthRoutes(app, {
       config: options.config,

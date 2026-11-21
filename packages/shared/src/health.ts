@@ -6,6 +6,10 @@ export const databaseCheckSchema = z.strictObject({
   schemaVersion: z.string().nullable(),
 });
 
+export const tradingLockCheckSchema = z.strictObject({
+  status: z.enum(['held', 'unavailable', 'lost', 'not_required']),
+});
+
 export const healthResponseSchema = z.strictObject({
   status: z.enum(['ok', 'degraded']),
   service: z.string().min(1),
@@ -13,6 +17,7 @@ export const healthResponseSchema = z.strictObject({
   environment: z.enum(['development', 'staging', 'production']),
   checks: z.strictObject({
     database: databaseCheckSchema,
+    tradingLock: tradingLockCheckSchema,
   }),
   timestamp: z.string().refine((value) => Number.isFinite(Date.parse(value))),
 });
