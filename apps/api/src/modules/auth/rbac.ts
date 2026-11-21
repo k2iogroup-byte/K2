@@ -22,6 +22,8 @@ export const PERMISSIONS = {
   marketDataRead: 'market_data.read',
   marketDataHealth: 'market_data.health',
   marketDataManage: 'market_data.manage',
+  tradingRead: 'trading.read',
+  tradingExecute: 'trading.execute',
 } as const;
 
 export type AuthContext = {

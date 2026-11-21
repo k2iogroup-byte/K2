@@ -23,6 +23,9 @@ import { registerMarketDataSocket } from './modules/market-data/market-data-ws.j
 import { createProvider } from './modules/market-data/provider.js';
 import { MarketDataStore } from './modules/market-data/store.js';
 import type { TradingLock } from './modules/trading/singleton.js';
+import { registerTradingRoutes } from './modules/trading/trading-routes.js';
+import { TradingService } from './modules/trading/trading-service.js';
+import { registerTradingSocket } from './modules/trading/trading-ws.js';
 
 const BODY_LIMIT_BYTES = 16 * 1024;
 
@@ -36,6 +39,7 @@ export type BuildAppOptions = {
   logger?: FastifyServerOptions['logger'];
   connections?: ConnectionLimiter;
   tradingLock?: TradingLock;
+  trading?: TradingService;
 };
 
 export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
@@ -122,8 +126,16 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       });
     }
     registerMarketDataRoutes({ app, auth, pool: options.pool, engine });
+    const trading =
+      options.trading ??
+      new TradingService(options.pool, {
+        fillsEnabled: options.config.executionFillsEnabled,
+        lock: options.tradingLock,
+      });
+    registerTradingRoutes(app, auth, trading, options.pool);
     await registerWebSocket(app, options.config, connections);
     registerMarketDataSocket(app, options.config, auth, engine, connections);
+    registerTradingSocket(app, options.config, auth, connections);
     return app;
   }
   await registerWebSocket(app, options.config, connections);
