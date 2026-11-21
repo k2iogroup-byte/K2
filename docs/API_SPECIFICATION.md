@@ -7,6 +7,8 @@
 > **Module 03 (implemented):** challenge catalogue, immutable rule-set versions, and account lifecycle are implemented without a `/v1` prefix. Checkout, metrics, and ledger routes below were not built. The contract is [MODULE_03_CHALLENGE_ACCOUNTS.md](./MODULE_03_CHALLENGE_ACCOUNTS.md).
 >
 > **Module 04 (implemented):** market-data normalisation, fixture feeds, bars, and feed health are implemented without a live vendor. The contract is [MODULE_04_MARKET_DATA.md](./MODULE_04_MARKET_DATA.md). The `/v1` rows below were not built.
+>
+> **Module 05 (implemented):** simulated long-only orders, positions, stop entries, stop-loss, take-profit, and percentage closes are implemented without a `/v1` prefix. The browser reaches them through `/k2-api/trading/...`. The contract is [MODULE_05_TRADING.md](./MODULE_05_TRADING.md). The `/v1` rows below were not built. The production risk authorizer still rejects every order.
 
 ---
 
@@ -142,3 +144,19 @@ All staff mutations: mandatory reason field, audit event, and — for financial 
 ## 12. Explicit Exclusions
 
 No Investor Copy or Global Competition endpoints in MVP (CONFIRMED non-MVP). They will be specified in a later phase after legal review.
+
+## Changelog
+
+### 2026-11-21
+
+Module 05 phase 2 extends the existing trading routes. No second copy of those routes was added.
+
+- `POST /trading/orders` accepts `STOP` for a buy. A sell stop is rejected. Optional `stopLossPrice` and `takeProfitPrice` are decimal strings and are checked against the entry reference.
+- `GET /trading/orders/:id` returns only the caller's order. Another user's id is 404.
+- `PATCH /trading/positions/:id` sets, changes, or clears stop-loss and take-profit on the caller's open position. The body carries the protection version. A stale version is 409. A stop that is not below the bid, or a target that is not above it, is 400 `PROTECTION_PRICE_INVALID`.
+- `POST /trading/positions/:id/close` accepts `percentage` of 25, 50, 75, or 100. Any other value is 400. The server floors the quantity to the instrument step. 100 percent sells the exact remaining quantity. A computed zero is 400.
+- `GET /trading/positions` includes the position id and the current protection prices.
+- `/ws/trading` sends order, fill, position, and protection events only to sockets of the owning user.
+- Every write requires the session, the same origin and CSRF checks as the other trading routes, and an `Idempotency-Key`. The same key and body replay the first response. The same key with a different body is 409.
+- A pending buy stop counts as a working entry. Another buy on that instrument is `POSITION_ALREADY_OPEN`.
+- Fills still require `APP_ENV=development` and `EXECUTION_ENABLED=true`. The server risk authorizer is unchanged and still rejects.
