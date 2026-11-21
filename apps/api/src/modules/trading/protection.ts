@@ -12,6 +12,7 @@ import type { Pool, PoolClient } from 'pg';
 
 import { AppError } from '../../infrastructure/http/errors.js';
 import { advanceTriggerCursor } from './quote-cursor.js';
+import type { TradingFanout } from './trading-fanout.js';
 import type { ExecutableQuote, TradingService } from './trading-service.js';
 import { TradingConflictError } from './trading-service.js';
 
@@ -369,6 +370,7 @@ export async function fireProtection(
   trading: TradingService,
   instrumentId: string,
   quote: ExecutableQuote,
+  fanout: TradingFanout | null = null,
 ): Promise<void> {
   const pending = await pool.query<{ id: string }>(
     `SELECT id FROM conditional_orders
@@ -378,7 +380,7 @@ export async function fireProtection(
     [instrumentId],
   );
   for (const row of pending.rows) {
-    await fireOneProtection(pool, trading, row.id, quote);
+    await fireOneProtection(pool, trading, row.id, quote, fanout);
   }
 }
 
@@ -387,6 +389,7 @@ async function fireOneProtection(
   trading: TradingService,
   id: string,
   quote: ExecutableQuote,
+  fanout: TradingFanout | null,
 ): Promise<void> {
   const claimed = await claimProtection(pool, id, quote);
   if (!claimed) return;
@@ -430,6 +433,10 @@ async function fireOneProtection(
     `UPDATE conditional_orders SET resulting_order_id = $2, updated_at = now() WHERE id = $1`,
     [id, result.orderId],
   );
+  fanout?.publish(claimed.userId, {
+    type: result.state === 'FILLED' ? 'fill' : 'order',
+    accountId: claimed.accountId,
+  });
 }
 
 type Claim = {

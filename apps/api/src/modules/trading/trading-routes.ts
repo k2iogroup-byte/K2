@@ -346,6 +346,13 @@ export function registerTradingRoutes(
         quote,
       });
       await publishAccount(pool, fanout, session.userId, params.id, 'position');
+      await publishAccount(
+        pool,
+        fanout,
+        session.userId,
+        params.id,
+        result.state === 'FILLED' ? 'fill' : 'order',
+      );
       return await sendJson(reply, 200, orderResponseSchema, {
         ...result,
         executionVenue: 'K2_SIMULATION',
@@ -404,7 +411,7 @@ async function publishAccount(
   fanout: TradingFanout,
   userId: string,
   positionId: string,
-  type: 'position' | 'protection',
+  type: 'position' | 'protection' | 'order' | 'fill',
 ): Promise<void> {
   const row = await pool.query<{ account_id: string }>(
     'SELECT account_id FROM positions WHERE id = $1',

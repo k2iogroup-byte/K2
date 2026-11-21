@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import {
   addDecimals,
@@ -269,6 +269,39 @@ export class TradingService {
       );
     }
 
+    if (this.isRiskReducingSell(input, locked.state, instrument)) {
+      const position = await this.lockPosition(client, input.accountId, input.instrumentId);
+      const positionReject = await this.positionRule(client, input, instrument, position);
+      if (positionReject) {
+        return this.persistReject(
+          client,
+          input,
+          locked.initial_capital,
+          instrument,
+          positionReject,
+        );
+      }
+      if (this.lock && !this.lock.fillsAllowed()) {
+        return this.persistReject(
+          client,
+          input,
+          locked.initial_capital,
+          instrument,
+          'TRADING_LOCK_LOST',
+        );
+      }
+      if (!this.fillsEnabled) {
+        return this.persistReject(
+          client,
+          input,
+          locked.initial_capital,
+          instrument,
+          'EXECUTION_DISABLED',
+        );
+      }
+      return this.riskReducingSell(client, input, locked.initial_capital, instrument, position);
+    }
+
     const reject = this.precheck(input, locked.state, instrument);
     if (reject)
       return this.persistReject(client, input, locked.initial_capital, instrument, reject);
@@ -331,6 +364,139 @@ export class TradingService {
     }
 
     return this.accept(client, input, locked.initial_capital, instrument, position, decision);
+  }
+
+  private isRiskReducingSell(input: OrderInput, state: string, instrument: InstrumentRow): boolean {
+    return (
+      input.side === 'SELL' &&
+      state === 'ACTIVE' &&
+      instrument.trading_status === 'TRADABLE' &&
+      instrument.market !== 'CRYPTO' &&
+      instrument.quote_asset === 'USD'
+    );
+  }
+
+  private async riskReducingSell(
+    client: PoolClient,
+    input: OrderInput,
+    initialCapital: string,
+    instrument: InstrumentRow,
+    position: PositionRow | null,
+  ): Promise<TradingOrderResult> {
+    if (!position) {
+      return this.persistReject(client, input, initialCapital, instrument, 'INSUFFICIENT_POSITION');
+    }
+    const decision: RiskDecision = {
+      decision: 'APPROVE',
+      decisionId: randomUUID(),
+      reasonCode: 'RISK_REDUCING',
+      mode: 'RISK_REDUCING',
+    };
+    const stored = await client.query<{ feed_state: string; received_timestamp: Date }>(
+      `SELECT feed_state, received_timestamp FROM quote_snapshots WHERE instrument_id = $1`,
+      [input.instrumentId],
+    );
+    const quote = input.quote;
+    const calendarOpen =
+      instrument.market !== 'EQUITIES' ||
+      this.calendar.equitySessionOpen(quote?.receivedAt ?? new Date());
+    const feedFresh =
+      quote !== null && quote.feedState === 'LIVE' && /^[0-9]+$/.test(quote.quoteUpdateId);
+    if ((stored.rowCount ?? 0) === 0 && !quote) {
+      const priced = { ...input, quote: this.entryQuote(position, instrument) };
+      const result = await this.accept(
+        client,
+        priced,
+        initialCapital,
+        instrument,
+        position,
+        decision,
+        'full',
+      );
+      if (result.orderId && result.rejectReason === null) {
+        await this.auditClose(
+          client,
+          result.orderId,
+          input.accountId,
+          'ENTRY_FALLBACK',
+          null,
+          null,
+        );
+      }
+      return result;
+    }
+    if (feedFresh && calendarOpen) {
+      const result = await this.accept(
+        client,
+        input,
+        initialCapital,
+        instrument,
+        position,
+        decision,
+        'book',
+      );
+      if (result.orderId && result.rejectReason === null) {
+        const age = quoteAgeMs(quote);
+        await this.auditClose(client, result.orderId, input.accountId, 'FRESH', age, age);
+      }
+      return result;
+    }
+    const placeholder = quote ?? this.entryQuote(position, instrument);
+    const result = await this.accept(
+      client,
+      { ...input, quote: placeholder },
+      initialCapital,
+      instrument,
+      position,
+      decision,
+      'defer',
+    );
+    if (result.orderId && result.state === 'OPEN') {
+      await client.query(
+        `INSERT INTO deferred_closes (order_id, position_id, account_id, instrument_id, quantity)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [result.orderId, position.id, input.accountId, input.instrumentId, input.quantity],
+      );
+      await this.auditClose(
+        client,
+        result.orderId,
+        input.accountId,
+        'DEFERRED_FRESH',
+        quote ? quoteAgeMs(quote) : null,
+        null,
+      );
+    }
+    return result;
+  }
+
+  private entryQuote(position: PositionRow, instrument: InstrumentRow): ExecutableQuote {
+    const price = canonicalDecimal(position.average_entry, instrument.price_scale);
+    return {
+      quoteUpdateId: Date.now().toString(),
+      bid: price,
+      ask: price,
+      bidSize: position.quantity,
+      askSize: position.quantity,
+      receivedAt: new Date(),
+      feedState: 'DISCONNECTED',
+      priceOrigin: 'TEST_FIXTURE',
+    };
+  }
+
+  private async auditClose(
+    client: PoolClient,
+    orderId: string,
+    accountId: string,
+    basis: 'FRESH' | 'DEFERRED_FRESH' | 'ENTRY_FALLBACK',
+    acceptanceAgeMs: number | null,
+    fillAgeMs: number | null,
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO risk_reducing_audits (
+         order_id, account_id, price_basis, quote_age_acceptance_ms, quote_age_fill_ms
+       ) VALUES ($1, $2, $3, $4, $5)`,
+      [orderId, accountId, basis, acceptanceAgeMs, fillAgeMs],
+    );
   }
 
   private precheck(input: OrderInput, state: string, instrument: InstrumentRow): string | null {
@@ -411,6 +577,7 @@ export class TradingService {
     instrument: InstrumentRow,
     position: PositionRow | null,
     decision: RiskDecision,
+    pricing: 'book' | 'full' | 'defer' = 'book',
   ): Promise<TradingOrderResult> {
     const quote = input.quote;
     if (!quote)
@@ -464,7 +631,7 @@ export class TradingService {
       );
     }
     let taken: LiquidityTake | null = null;
-    if (marketable) {
+    if (pricing === 'book' && marketable) {
       taken = await takeLiquidity(client, {
         instrumentId: input.instrumentId,
         source: liquiditySource(quote.priceOrigin),
@@ -477,8 +644,17 @@ export class TradingService {
         quantityScale: qtyScale,
       });
     }
-    const fillQty = taken?.quantity ?? zero(qtyScale);
-    if (input.orderType === 'MARKET' && !decimalGreaterThan(fillQty, '0', qtyScale)) {
+    const fillQty =
+      pricing === 'full' && marketable
+        ? quantity
+        : pricing === 'defer'
+          ? zero(qtyScale)
+          : (taken?.quantity ?? zero(qtyScale));
+    if (
+      pricing === 'book' &&
+      input.orderType === 'MARKET' &&
+      !decimalGreaterThan(fillQty, '0', qtyScale)
+    ) {
       return this.persistReject(
         client,
         input,
@@ -1135,19 +1311,27 @@ export class TradingService {
       order.side === 'BUY' ? quote.askSize : quote.bidSize,
       qtyScale,
     );
-    const taken = await takeLiquidity(client, {
-      instrumentId: order.instrument_id,
-      source: liquiditySource(quote.priceOrigin),
-      bookSide: order.side === 'BUY' ? 'ASK' : 'BID',
-      price: touch,
-      priceScale,
-      quoteUpdateId: quote.quoteUpdateId,
-      displayed,
-      want: remaining,
-      quantityScale: qtyScale,
-    });
-    if (!decimalGreaterThan(taken.quantity, '0', qtyScale)) return false;
-    const fillQty = taken.quantity;
+    const deferred = await client.query(
+      `SELECT 1 FROM deferred_closes WHERE order_id = $1 AND state = 'AWAITING_FRESH'`,
+      [orderId],
+    );
+    const awaitingFresh = (deferred.rowCount ?? 0) > 0;
+    if (awaitingFresh && quote.feedState !== 'LIVE') return false;
+    const taken = awaitingFresh
+      ? null
+      : await takeLiquidity(client, {
+          instrumentId: order.instrument_id,
+          source: liquiditySource(quote.priceOrigin),
+          bookSide: order.side === 'BUY' ? 'ASK' : 'BID',
+          price: touch,
+          priceScale,
+          quoteUpdateId: quote.quoteUpdateId,
+          displayed,
+          want: remaining,
+          quantityScale: qtyScale,
+        });
+    if (!awaitingFresh && !decimalGreaterThan(taken?.quantity ?? '0', '0', qtyScale)) return false;
+    const fillQty = awaitingFresh ? remaining : (taken?.quantity ?? zero(qtyScale));
     const unfilled = subtractDecimals(remaining, fillQty, qtyScale);
     const remainderRests =
       order.order_type === 'LIMIT' && decimalGreaterThan(unfilled, '0', qtyScale);
@@ -1252,26 +1436,39 @@ export class TradingService {
       );
     }
     await this.outbox(client, accountId, executionId, filledNotional, filledFee);
-    await client.query(
-      `INSERT INTO liquidity_allocations (
-         execution_id, instrument_id, book_side, price, displayed_qty, consumed_before,
-         take_qty, consumed_after, accept_sequence, quote_update_id
-       )
-       SELECT $1, $2, $3, $4, $5, $6, $7, $8, accept_sequence, $9
-       FROM orders WHERE id = $10`,
-      [
-        executionId,
-        order.instrument_id,
-        taken.bookSide,
-        taken.price,
-        taken.displayed,
-        taken.consumedBefore,
-        taken.quantity,
-        taken.consumedAfter,
-        taken.quoteUpdateId,
+    if (taken) {
+      await client.query(
+        `INSERT INTO liquidity_allocations (
+           execution_id, instrument_id, book_side, price, displayed_qty, consumed_before,
+           take_qty, consumed_after, accept_sequence, quote_update_id
+         )
+         SELECT $1, $2, $3, $4, $5, $6, $7, $8, accept_sequence, $9
+         FROM orders WHERE id = $10`,
+        [
+          executionId,
+          order.instrument_id,
+          taken.bookSide,
+          taken.price,
+          taken.displayed,
+          taken.consumedBefore,
+          taken.quantity,
+          taken.consumedAfter,
+          taken.quoteUpdateId,
+          orderId,
+        ],
+      );
+    }
+    if (awaitingFresh) {
+      await client.query(`UPDATE deferred_closes SET state = 'FILLED' WHERE order_id = $1`, [
         orderId,
-      ],
-    );
+      ]);
+      await client.query(
+        `UPDATE risk_reducing_audits
+            SET quote_age_fill_ms = $2
+          WHERE order_id = $1 AND price_basis = 'DEFERRED_FRESH'`,
+        [orderId, quoteAgeMs(quote)],
+      );
+    }
     await client.query(
       `UPDATE simulation_cash_projections
        SET cash = $2, reserved_cash = $3, event_sequence = event_sequence + 1, updated_at = now()
@@ -1328,6 +1525,11 @@ function requestHash(input: OrderInput): string {
     side: input.side,
   });
   return createHash('sha256').update(body).digest('hex');
+}
+
+function quoteAgeMs(quote: ExecutableQuote): number {
+  const age = Date.now() - quote.receivedAt.getTime();
+  return age > 0 ? Math.trunc(age) : 0;
 }
 
 function isUniqueViolation(error: unknown, constraint: string): boolean {

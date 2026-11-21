@@ -11,7 +11,7 @@ export type RiskDecision = {
   decision: 'APPROVE' | 'REJECT';
   decisionId: string;
   reasonCode: string;
-  mode: 'FAIL_CLOSED' | 'TEST_DOUBLE';
+  mode: 'FAIL_CLOSED' | 'TEST_DOUBLE' | 'RISK_REDUCING';
 };
 
 export interface RiskAuthorizer {

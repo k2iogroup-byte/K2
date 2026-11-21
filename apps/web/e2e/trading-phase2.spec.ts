@@ -8,7 +8,7 @@ import pg from 'pg';
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error('DATABASE_URL is required for the trading fixture');
 
-test('login, rejected order, fixture position, and a rejected 50 percent close', async ({
+test('login, rejected buy, fixture position, and a filled 50 percent close', async ({
   request,
 }) => {
   const email = `phase2-${randomUUID()}@example.com`;
@@ -99,18 +99,42 @@ test('login, rejected order, fixture position, and a rejected 50 percent close',
   });
   expect(closed.status()).toBe(200);
   expect(await closed.json()).toMatchObject({
-    state: 'REJECTED',
-    rejectReason: 'CALENDAR_UNCOVERED',
+    state: 'OPEN',
+    rejectReason: null,
     filledQuantity: '0.00000000',
   });
+  const frozen = await request.get(`/k2-api/trading/positions?accountId=${ids.accountId}`);
+  const held = (await frozen.json()) as {
+    positions: { quantity: string; reservedSell: string }[];
+  };
+  expect(held.positions[0]).toMatchObject({ quantity: '2.00000000', reservedSell: '1.00000000' });
+  const priced = await request.post('/k2-api/internal/test-fixture/quotes', {
+    headers: {
+      'x-k2-request': '1',
+      'x-csrf-token': csrf.value,
+    },
+    data: {
+      providerSymbol: ids.symbol.toLowerCase(),
+      bid: '9.25',
+      ask: '9.40',
+      quoteUpdateId: '50',
+    },
+  });
+  expect(priced.status()).toBe(202);
   const after = await request.get(`/k2-api/trading/positions?accountId=${ids.accountId}`);
-  const remaining = (await after.json()) as { positions: { quantity: string }[] };
-  expect(remaining.positions[0]?.quantity).toBe('2.00000000');
+  const remaining = (await after.json()) as {
+    positions: { quantity: string; reservedSell: string }[];
+  };
+  expect(remaining.positions[0]).toMatchObject({
+    quantity: '1.00000000',
+    reservedSell: '0.00000000',
+  });
 });
 
 async function fixtureAccount(userId: string): Promise<{
   accountId: string;
   instrumentId: string;
+  symbol: string;
 }> {
   const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
   const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 });
@@ -174,7 +198,7 @@ async function fixtureAccount(userId: string): Promise<{
       [instrumentId],
     );
     await client.query('COMMIT');
-    return { accountId, instrumentId };
+    return { accountId, instrumentId, symbol };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

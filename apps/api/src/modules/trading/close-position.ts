@@ -44,9 +44,6 @@ export async function closeByPercent(
     return prior.response;
   }
   const target = await closeQuantity(pool, input);
-  if (!input.quote) {
-    throw new AppError('VALIDATION_ERROR', 400, 'A quote is required to close a position');
-  }
   const quote = input.quote;
   const result = await trading.submit({
     accountId: target.accountId,

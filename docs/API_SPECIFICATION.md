@@ -159,4 +159,11 @@ Module 05 phase 2 extends the existing trading routes. No second copy of those r
 - `/ws/trading` sends order, fill, position, and protection events only to sockets of the owning user.
 - Every write requires the session, the same origin and CSRF checks as the other trading routes, and an `Idempotency-Key`. The same key and body replay the first response. The same key with a different body is 409.
 - A pending buy stop counts as a working entry. Another buy on that instrument is `POSITION_ALREADY_OPEN`.
-- Fills still require `APP_ENV=development` and `EXECUTION_ENABLED=true`. The server risk authorizer is unchanged and still rejects.
+- Fills still require `APP_ENV=development` and `EXECUTION_ENABLED=true`. The server risk authorizer is unchanged and still rejects buys.
+
+### 2026-11-21 — Phase 3
+
+- Accepted market-data quotes, including the Binance public provider and the fixture provider, walk the same quote path as an order. Only the process holding the trading lock runs it. A repeated update id does not fire twice.
+- A risk-reducing close (close percentage, stop-loss, take-profit, or a sell that does not exceed the open long) is never rejected because the equity calendar is closed or the feed is stale or disconnected. A buy still goes through the fail-closed authorizer.
+- A fresh quote fills that close at the bid. A stale or closed-market close is accepted and the quantity is reserved until the next fresh quote, which fills the whole reserved quantity at that bid (`DEFERRED_FRESH`). If the instrument has never had a quote, the close fills at the position's average entry (`ENTRY_FALLBACK`).
+- The client cannot supply the fill price.

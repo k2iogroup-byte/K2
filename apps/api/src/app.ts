@@ -18,6 +18,7 @@ import { createEmailSender, type EmailSender } from './modules/auth/email.js';
 import type { RateLimiter } from './modules/auth/rate-limit.js';
 import { registerHealthRoutes } from './modules/health/health-route.js';
 import { MarketDataEngine } from './modules/market-data/engine.js';
+import { registerFixtureQuoteRoute } from './modules/market-data/fixture-quote-route.js';
 import { registerMarketDataRoutes } from './modules/market-data/market-data-routes.js';
 import { registerMarketDataSocket } from './modules/market-data/market-data-ws.js';
 import { createProvider } from './modules/market-data/provider.js';
@@ -139,6 +140,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     registerTradingRoutes(app, auth, trading, phase2, options.pool, fanout);
     bindTradingQuotes(engine, phase2);
     if (options.tradingLock?.fillsAllowed()) await phase2.evaluateSnapshots();
+    if (options.config.appEnv === 'development') {
+      registerFixtureQuoteRoute(app, auth, engine, options.pool);
+    }
     if (provider) {
       provider.start((event) => {
         void engine.ingest(event).catch(() => {

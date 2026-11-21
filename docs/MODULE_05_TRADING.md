@@ -48,4 +48,18 @@ The body is `{ "percentage": 25 | 50 | 75 | 100 }`. Any other value is 400. The 
 
 ## Socket
 
-`/ws/trading` keeps the market-data origin allowlist, payload cap, and connection limits, and also caps sockets per user. A missing session is closed. Events for one user are not written to another user's sockets.
+`/ws/trading` keeps the market-data origin allowlist, payload cap, and connection limits, and also caps sockets per user. A missing session is closed. Events for one user are not written to another user's sockets. An accepted close that is waiting for a fresh price emits an order event, and the later fill emits a fill event.
+
+## Phase 3 — 2026-11-21
+
+A quote accepted by the market-data engine, from the fixture provider or the Binance public provider, is the same `onQuote` walk used when an order is submitted. There is one copy of the stop, stop-loss, and take-profit logic. It runs only while this process holds the singleton lock. After the lock is acquired, pending triggers are checked once against the latest stored snapshot. If several quotes arrive for one instrument before the walk finishes, only the newest is kept. Migration `0009` records the last update id. The cursor moves in the same transaction as the trigger state change, and that change matches the pending version, so a duplicate quote cannot fire twice.
+
+A risk-reducing close is a close percentage, a stop-loss or take-profit, or a sell whose quantity does not exceed the open long. It skips the closed-calendar and stale-feed rejections and the fail-closed risk stub. The audit records `APPROVE` / `RISK_REDUCING`. Buys are unchanged and still fail closed.
+
+| Situation | Result | `price_basis` |
+| --- | --- | --- |
+| Feed is fresh and the equity session is open | Fill now at the bid, using the shared book | `FRESH` |
+| Feed is stale or disconnected, or the equity session is closed | Accept the close, reserve the quantity, fill the whole amount at the next fresh bid | `DEFERRED_FRESH` |
+| No quote has ever been stored | Fill now at the position average entry | `ENTRY_FALLBACK` |
+
+The waiting close is an `OPEN` order plus a row in `deferred_closes`. It is not cancelled and the client does not choose the price. A later sell or trigger cannot sell more than the quantity that is still free.

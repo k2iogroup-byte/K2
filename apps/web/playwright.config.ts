@@ -37,6 +37,7 @@ export default defineConfig({
         PORT: String(apiPort),
         EMAIL_DELIVERY: 'capture',
         EMAIL_OUTBOX_PATH: emailOutbox,
+        EXECUTION_ENABLED: 'true',
       },
     },
     {

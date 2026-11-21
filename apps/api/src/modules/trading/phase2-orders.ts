@@ -237,7 +237,7 @@ export class Phase2Orders {
     await this.trading.applyQuote(instrumentId, quote);
     await this.fireEntryStops(instrumentId, quote);
     await attachInstrumentProtection(this.pool, instrumentId);
-    await fireProtection(this.pool, this.trading, instrumentId, quote);
+    await fireProtection(this.pool, this.trading, instrumentId, quote, this.fanout);
     await this.publishFills(instrumentId, quote.quoteUpdateId);
     await this.markQuoteProcessed(instrumentId, quote);
   }
