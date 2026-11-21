@@ -4,6 +4,7 @@ import { canonicalDecimal, decimalGreaterThan, decimalLessThan } from '@k2/share
 import type { Pool, PoolClient } from 'pg';
 
 import { attachInstrumentProtection, fireProtection } from './protection.js';
+import { advanceTriggerCursor, triggerQuoteIsNew } from './quote-cursor.js';
 import type { TradingLock } from './singleton.js';
 import type { TradingFanout } from './trading-fanout.js';
 import type { ExecutableQuote, TradingOrderResult, TradingService } from './trading-service.js';
@@ -42,6 +43,9 @@ export class Phase2Orders {
     private readonly fillsEnabled = false,
     private readonly fanout: TradingFanout | null = null,
   ) {}
+
+  private readonly latestQuote = new Map<string, ExecutableQuote>();
+  private readonly quoteInflight = new Map<string, Promise<void>>();
 
   async placeStop(input: StopInput): Promise<TradingOrderResult> {
     if (!orderActionAllowed('BUY', 'STOP')) {
@@ -146,14 +150,110 @@ export class Phase2Orders {
     }
   }
 
+  /**
+   * One quote path for resting orders, entry stops, and protection.
+   * At most one evaluation runs per instrument. A newer quote replaces any
+   * quote that is still waiting.
+   */
   async onQuote(instrumentId: string, quote: ExecutableQuote): Promise<void> {
+    this.latestQuote.set(instrumentId, quote);
+    for (;;) {
+      const running = this.quoteInflight.get(instrumentId);
+      if (running) {
+        await running;
+        if (this.latestQuote.has(instrumentId)) continue;
+        return;
+      }
+      if (!this.latestQuote.has(instrumentId)) return;
+      const task = this.drainQuotes(instrumentId);
+      this.quoteInflight.set(instrumentId, task);
+      try {
+        await task;
+      } finally {
+        if (this.quoteInflight.get(instrumentId) === task) {
+          this.quoteInflight.delete(instrumentId);
+        }
+      }
+    }
+  }
+
+  /** After the lock is acquired, walk the latest stored snapshot once. */
+  async evaluateSnapshots(): Promise<void> {
     if (this.lock && !this.lock.fillsAllowed()) return;
+    const rows = await this.pool
+      .query<{
+        instrument_id: string;
+        bid: string;
+        ask: string;
+        bid_size: string;
+        ask_size: string;
+        received_timestamp: Date;
+        feed_state: ExecutableQuote['feedState'];
+        price_origin: ExecutableQuote['priceOrigin'];
+        provider_event_id: string;
+        sequence_no: string;
+      }>(
+        `SELECT instrument_id, bid::text, ask::text, bid_size::text, ask_size::text,
+                received_timestamp, feed_state, price_origin, provider_event_id, sequence_no::text
+           FROM quote_snapshots`,
+      )
+      .catch((error: unknown) => {
+        if (isMissingRelation(error)) return { rows: [] };
+        throw error;
+      });
+    for (const row of rows.rows) {
+      const updateId = /^[0-9]+$/.test(row.provider_event_id)
+        ? row.provider_event_id
+        : row.sequence_no;
+      await this.onQuote(row.instrument_id, {
+        quoteUpdateId: updateId,
+        bid: row.bid,
+        ask: row.ask,
+        bidSize: row.bid_size,
+        askSize: row.ask_size,
+        receivedAt: row.received_timestamp,
+        feedState: row.feed_state,
+        priceOrigin: row.price_origin,
+      });
+    }
+  }
+
+  private async drainQuotes(instrumentId: string): Promise<void> {
+    while (this.latestQuote.has(instrumentId)) {
+      const quote = this.latestQuote.get(instrumentId);
+      this.latestQuote.delete(instrumentId);
+      if (!quote) return;
+      await this.evaluateQuote(instrumentId, quote);
+    }
+  }
+
+  private async evaluateQuote(instrumentId: string, quote: ExecutableQuote): Promise<void> {
+    if (this.lock && !this.lock.fillsAllowed()) return;
+    if (!this.fillsEnabled) {
+      await this.trading.applyQuote(instrumentId, quote);
+      return;
+    }
+    if (!(await triggerQuoteIsNew(this.pool, instrumentId, quote))) return;
     await this.trading.applyQuote(instrumentId, quote);
-    if (!this.fillsEnabled) return;
     await this.fireEntryStops(instrumentId, quote);
     await attachInstrumentProtection(this.pool, instrumentId);
     await fireProtection(this.pool, this.trading, instrumentId, quote);
     await this.publishFills(instrumentId, quote.quoteUpdateId);
+    await this.markQuoteProcessed(instrumentId, quote);
+  }
+
+  private async markQuoteProcessed(instrumentId: string, quote: ExecutableQuote): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await advanceTriggerCursor(client, instrumentId, quote);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   private async publishFills(instrumentId: string, quoteUpdateId: string): Promise<void> {
@@ -284,10 +384,12 @@ export class Phase2Orders {
         trigger_price: string;
         state: string;
         price_scale: number;
+        version: string;
       }>(
         `SELECT conditional_orders.account_id, conditional_orders.user_id,
                 conditional_orders.instrument_id, conditional_orders.quantity::text,
                 conditional_orders.trigger_price::text, conditional_orders.state,
+                conditional_orders.version::text,
                 instruments.price_scale
          FROM conditional_orders
          JOIN instruments ON instruments.id = conditional_orders.instrument_id
@@ -309,11 +411,17 @@ export class Phase2Orders {
         await client.query('COMMIT');
         return null;
       }
-      await client.query(
-        `UPDATE conditional_orders SET state = 'TRIGGERED', updated_at = now(), version = version + 1
-         WHERE id = $1`,
-        [id],
+      const triggered = await client.query(
+        `UPDATE conditional_orders
+            SET state = 'TRIGGERED', updated_at = now(), version = version + 1
+          WHERE id = $1 AND state = 'PENDING' AND version = $2`,
+        [id, row.version],
       );
+      if ((triggered.rowCount ?? 0) === 0) {
+        await client.query('COMMIT');
+        return null;
+      }
+      await advanceTriggerCursor(client, row.instrument_id, quote);
       await client.query('COMMIT');
       return row;
     } catch (error) {
@@ -405,6 +513,10 @@ async function storeCommand(
      VALUES ($1, 'orders.stop', $2, $3, $4::jsonb)`,
     [key, userId, hash, JSON.stringify(response)],
   );
+}
+
+function isMissingRelation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === '42P01';
 }
 
 function requestHash(input: StopInput): string {

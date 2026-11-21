@@ -11,6 +11,7 @@ import {
 import type { Pool, PoolClient } from 'pg';
 
 import { AppError } from '../../infrastructure/http/errors.js';
+import { advanceTriggerCursor } from './quote-cursor.js';
 import type { ExecutableQuote, TradingService } from './trading-service.js';
 import { TradingConflictError } from './trading-service.js';
 
@@ -466,12 +467,14 @@ async function claimProtection(
       instrument_id: string;
       position_id: string;
       state: string;
+      version: string;
       price_scale: number;
       quantity_scale: number;
     }>(
       `SELECT conditional_orders.kind, conditional_orders.trigger_price::text,
               conditional_orders.user_id, conditional_orders.instrument_id,
               conditional_orders.position_id, conditional_orders.state,
+              conditional_orders.version::text,
               instruments.price_scale, instruments.quantity_scale
          FROM conditional_orders
          JOIN instruments ON instruments.id = conditional_orders.instrument_id
@@ -515,10 +518,17 @@ async function claimProtection(
         FOR UPDATE`,
       [stop.position_id, id],
     );
-    await client.query(
-      `UPDATE conditional_orders SET state = 'TRIGGERED', updated_at = now() WHERE id = $1`,
-      [id],
+    const triggered = await client.query(
+      `UPDATE conditional_orders
+          SET state = 'TRIGGERED', updated_at = now(), version = version + 1
+        WHERE id = $1 AND state = 'PENDING' AND version = $2`,
+      [id, stop.version],
     );
+    if ((triggered.rowCount ?? 0) === 0) {
+      await client.query('COMMIT');
+      return null;
+    }
+    await advanceTriggerCursor(client, stop.instrument_id, quote);
     if (siblings.rows.length > 0) {
       await client.query(
         `UPDATE conditional_orders SET state = 'CANCELLED', updated_at = now() WHERE id = ANY($1::uuid[])`,

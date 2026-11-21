@@ -23,6 +23,7 @@ import { registerMarketDataSocket } from './modules/market-data/market-data-ws.j
 import { createProvider } from './modules/market-data/provider.js';
 import { MarketDataStore } from './modules/market-data/store.js';
 import { Phase2Orders } from './modules/trading/phase2-orders.js';
+import { bindTradingQuotes } from './modules/trading/quote-bridge.js';
 import type { TradingLock } from './modules/trading/singleton.js';
 import { TradingFanout } from './modules/trading/trading-fanout.js';
 import { registerTradingRoutes } from './modules/trading/trading-routes.js';
@@ -120,13 +121,6 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       },
       instruments,
     );
-    if (provider) {
-      provider.start((event) => {
-        void engine.ingest(event).catch(() => {
-          app.log.error({ event: 'market_data_ingest_failed' }, 'market data ingest failed');
-        });
-      });
-    }
     registerMarketDataRoutes({ app, auth, pool: options.pool, engine });
     const trading =
       options.trading ??
@@ -143,6 +137,15 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       fanout,
     );
     registerTradingRoutes(app, auth, trading, phase2, options.pool, fanout);
+    bindTradingQuotes(engine, phase2);
+    if (options.tradingLock?.fillsAllowed()) await phase2.evaluateSnapshots();
+    if (provider) {
+      provider.start((event) => {
+        void engine.ingest(event).catch(() => {
+          app.log.error({ event: 'market_data_ingest_failed' }, 'market data ingest failed');
+        });
+      });
+    }
     await registerWebSocket(app, options.config, connections);
     registerMarketDataSocket(app, options.config, auth, engine, connections);
     registerTradingSocket(app, options.config, auth, connections, fanout);
