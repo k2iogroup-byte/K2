@@ -1,0 +1,44 @@
+{
+  "symbols": [
+    {
+      "symbol": "ZBTCUSDT",
+      "status": "TRADING",
+      "quoteAsset": "USDT",
+      "filters": [
+        { "filterType": "PRICE_FILTER", "tickSize": "0.01000000" },
+        { "filterType": "LOT_SIZE", "minQty": "0.00001000", "maxQty": "9000.00000000", "stepSize": "0.00001000" },
+        { "filterType": "NOTIONAL", "minNotional": "5.00000000" }
+      ]
+    },
+    {
+      "symbol": "ZPEPEUSDT",
+      "status": "TRADING",
+      "quoteAsset": "USDT",
+      "filters": [
+        { "filterType": "PRICE_FILTER", "tickSize": "0.00000123" },
+        { "filterType": "LOT_SIZE", "minQty": "1", "maxQty": "9000000000", "stepSize": "1" },
+        { "filterType": "MIN_NOTIONAL", "minNotional": "1" }
+      ]
+    },
+    {
+      "symbol": "ZOLDUSDT",
+      "status": "BREAK",
+      "quoteAsset": "USDT",
+      "filters": [
+        { "filterType": "PRICE_FILTER", "tickSize": "0.01000000" },
+        { "filterType": "LOT_SIZE", "minQty": "0.00100000", "maxQty": "1000.00000000", "stepSize": "0.00100000" },
+        { "filterType": "NOTIONAL", "minNotional": "5.00000000" }
+      ]
+    },
+    {
+      "symbol": "ETHUSDC",
+      "status": "TRADING",
+      "quoteAsset": "USDC",
+      "filters": [
+        { "filterType": "PRICE_FILTER", "tickSize": "0.01" },
+        { "filterType": "LOT_SIZE", "minQty": "0.001", "maxQty": "1000", "stepSize": "0.001" },
+        { "filterType": "NOTIONAL", "minNotional": "5" }
+      ]
+    }
+  ]
+}

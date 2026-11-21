@@ -17,6 +17,7 @@ import { registerAuthRoutes } from './modules/auth/auth-routes.js';
 import { createEmailSender, type EmailSender } from './modules/auth/email.js';
 import type { RateLimiter } from './modules/auth/rate-limit.js';
 import { registerHealthRoutes } from './modules/health/health-route.js';
+import { startCatalogSync } from './modules/market-data/catalog-sync.js';
 import { MarketDataEngine } from './modules/market-data/engine.js';
 import { registerFixtureQuoteRoute } from './modules/market-data/fixture-quote-route.js';
 import { registerMarketDataRoutes } from './modules/market-data/market-data-routes.js';
@@ -140,6 +141,14 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     registerTradingRoutes(app, auth, trading, phase2, options.pool, fanout);
     bindTradingQuotes(engine, phase2);
     if (options.tradingLock?.fillsAllowed()) await phase2.evaluateSnapshots();
+    const catalog = startCatalogSync({
+      pool: options.pool,
+      lock: options.tradingLock ?? null,
+      load: () => Promise.resolve(null),
+    });
+    app.addHook('onClose', () => {
+      catalog.stop();
+    });
     if (options.config.appEnv === 'development') {
       registerFixtureQuoteRoute(app, auth, engine, options.pool);
     }

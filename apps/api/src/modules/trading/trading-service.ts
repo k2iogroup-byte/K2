@@ -14,6 +14,7 @@ import {
 import type { Pool, PoolClient } from 'pg';
 
 import { DEFAULT_STALE_AFTER_MS } from '../market-data/engine.js';
+import { filterViolation } from '../market-data/exchange-filters.js';
 import { liquiditySource, type LiquidityTake, takeLiquidity } from './liquidity.js';
 import {
   ClosedEquityCalendar,
@@ -261,7 +262,11 @@ export class TradingService {
       [input.instrumentId],
     );
     const instrument = instrumentResult.rows[0];
-    if (!instrument || instrument.trading_status !== 'TRADABLE') {
+    const tradable = instrument?.trading_status === 'TRADABLE';
+    const haltedClose =
+      instrument?.trading_status === 'HALTED' &&
+      this.isRiskReducingSell(input, locked.state, instrument);
+    if (!instrument || (!tradable && !haltedClose)) {
       return this.persistReject(
         client,
         input,
@@ -301,12 +306,19 @@ export class TradingService {
           'EXECUTION_DISABLED',
         );
       }
+      const closeFilter = await this.filterReject(client, input, instrument, false);
+      if (closeFilter) {
+        return this.persistReject(client, input, locked.initial_capital, instrument, closeFilter);
+      }
       return this.riskReducingSell(client, input, locked.initial_capital, instrument, position);
     }
 
     const reject = this.precheck(input, locked.state, instrument);
     if (reject)
       return this.persistReject(client, input, locked.initial_capital, instrument, reject);
+    const filtered = await this.filterReject(client, input, instrument, true);
+    if (filtered)
+      return this.persistReject(client, input, locked.initial_capital, instrument, filtered);
     if (this.lock && !this.lock.fillsAllowed()) {
       return this.persistReject(
         client,
@@ -368,11 +380,48 @@ export class TradingService {
     return this.accept(client, input, locked.initial_capital, instrument, position, decision);
   }
 
+  private async filterReject(
+    client: PoolClient,
+    input: OrderInput,
+    instrument: InstrumentRow,
+    checkNotional: boolean,
+  ): Promise<string | null> {
+    const stored = await client.query<{
+      tick_size: string;
+      step_size: string;
+      min_qty: string;
+      max_qty: string;
+      min_notional: string;
+    }>(
+      `SELECT tick_size, step_size, min_qty, max_qty, min_notional
+         FROM instrument_exchange_filters WHERE instrument_id = $1`,
+      [input.instrumentId],
+    );
+    const filters = stored.rows[0];
+    if (!filters) return null;
+    const quoted = input.limitPrice ?? (input.side === 'BUY' ? input.quote?.ask : input.quote?.bid);
+    const price = quoted
+      ? quotePriceToUsd(instrument.quote_asset ?? 'USD', quoted, instrument.price_scale)
+      : filters.tick_size;
+    return filterViolation(
+      {
+        tickSize: filters.tick_size,
+        stepSize: filters.step_size,
+        minQty: filters.min_qty,
+        maxQty: filters.max_qty,
+        minNotional: filters.min_notional,
+      },
+      price,
+      input.quantity,
+      checkNotional && quoted !== undefined,
+    );
+  }
+
   private isRiskReducingSell(input: OrderInput, state: string, instrument: InstrumentRow): boolean {
     return (
       input.side === 'SELL' &&
       state === 'ACTIVE' &&
-      instrument.trading_status === 'TRADABLE' &&
+      (instrument.trading_status === 'TRADABLE' || instrument.trading_status === 'HALTED') &&
       ((instrument.market === 'EQUITIES' && instrument.quote_asset === 'USD') ||
         (instrument.market === 'CRYPTO' && instrument.quote_asset === 'USDT'))
     );
