@@ -152,7 +152,7 @@ describe('trading http and socket', () => {
       const timer = setTimeout(() => {
         reject(new Error('socket timeout'));
       }, 5_000);
-      socket.once('message', (data) => {
+      socket.on('message', (data) => {
         clearTimeout(timer);
         resolve(String(data));
       });
