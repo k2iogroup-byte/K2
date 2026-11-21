@@ -46,6 +46,7 @@ export type AppConfig = {
   emailOutboxPath: string | null;
   marketDataMode: MarketDataMode;
   trustProxy: TrustProxySetting;
+  executionFillsEnabled: boolean;
 };
 
 /** 32 bytes of 0x01. Development only. Rejected in staging and production. */
@@ -134,6 +135,7 @@ export function loadConfig(env: Env): AppConfig {
       : readOutboxPath(env.EMAIL_OUTBOX_PATH, emailDelivery.mode, issues);
   const marketDataMode = readMarketDataMode(env, appEnv, issues);
   const trustProxy = readTrustProxy(env.TRUST_PROXY, issues);
+  const executionFillsEnabled = readExecutionFills(env.EXECUTION_ENABLED, appEnv, issues);
 
   if (appEnv && database && databaseSsl) {
     checkDatabasePolicy(appEnv, database.url, databaseSsl, issues);
@@ -156,7 +158,8 @@ export function loadConfig(env: Env): AppConfig {
     !webOrigin ||
     !loginDelay ||
     !marketDataMode ||
-    !trustProxy
+    !trustProxy ||
+    executionFillsEnabled === null
   ) {
     throw new ConfigError(issues.length > 0 ? issues : [{ path: 'config', message: 'is invalid' }]);
   }
@@ -181,7 +184,29 @@ export function loadConfig(env: Env): AppConfig {
     emailOutboxPath,
     marketDataMode,
     trustProxy,
+    executionFillsEnabled,
   };
+}
+
+function readExecutionFills(
+  raw: string | undefined,
+  appEnv: AppEnv | null,
+  issues: ConfigIssue[],
+): boolean | null {
+  const value = raw === undefined ? '' : raw.trim();
+  if (value === '' || value === 'false') return false;
+  if (value !== 'true') {
+    issues.push({ path: 'EXECUTION_ENABLED', message: 'must be true or false' });
+    return null;
+  }
+  if (appEnv !== 'development') {
+    issues.push({
+      path: 'EXECUTION_ENABLED',
+      message: 'simulated fills stay off outside development',
+    });
+    return null;
+  }
+  return true;
 }
 
 const TRUST_PROXY_MESSAGE =

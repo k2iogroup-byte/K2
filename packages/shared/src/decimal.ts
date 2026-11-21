@@ -34,6 +34,38 @@ export function addDecimals(left: string, right: string, scale: number): string 
   return formatScaled(scaledInteger(left, scale) + scaledInteger(right, scale), scale);
 }
 
+export function subtractDecimals(left: string, right: string, scale: number): string {
+  const diff = scaledInteger(left, scale) - scaledInteger(right, scale);
+  if (diff < 0n) return `-${formatScaled(-diff, scale)}`;
+  return formatScaled(diff, scale);
+}
+
+export function multiplyDecimals(
+  left: string,
+  right: string,
+  leftScale: number,
+  rightScale: number,
+  resultScale: number,
+): string {
+  const product = scaledInteger(left, leftScale) * scaledInteger(right, rightScale);
+  return roundHalfAway(product, leftScale + rightScale, resultScale);
+}
+
+export function divideByInt(
+  value: string,
+  scale: number,
+  divisor: bigint,
+  resultScale: number,
+): string {
+  if (divisor <= 0n) throw new DecimalError();
+  const numerator = scaledInteger(value, scale) * 10n ** BigInt(resultScale);
+  const denominator = divisor * 10n ** BigInt(scale);
+  const quotient = numerator / denominator;
+  const remainder = numerator % denominator;
+  const rounded = remainder * 2n >= denominator ? quotient + 1n : quotient;
+  return formatScaled(rounded, resultScale);
+}
+
 function compareScaled(left: string, right: string, scale: number): number {
   const a = scaledInteger(left, scale);
   const b = scaledInteger(right, scale);
@@ -48,8 +80,23 @@ function scaledInteger(value: string, scale: number): bigint {
   return BigInt(`${whole}${fraction}`);
 }
 
+function roundHalfAway(value: bigint, fromScale: number, resultScale: number): string {
+  if (!Number.isInteger(fromScale) || !Number.isInteger(resultScale)) throw new DecimalError();
+  if (fromScale < resultScale) {
+    return formatScaled(value * 10n ** BigInt(resultScale - fromScale), resultScale);
+  }
+  const factor = 10n ** BigInt(fromScale - resultScale);
+  const negative = value < 0n;
+  const absolute = negative ? -value : value;
+  const quotient = absolute / factor;
+  const remainder = absolute % factor;
+  const rounded = remainder * 2n >= factor ? quotient + 1n : quotient;
+  return formatScaled(negative ? -rounded : rounded, resultScale);
+}
+
 function formatScaled(value: bigint, scale: number): string {
-  const digits = value.toString().padStart(scale + 1, '0');
-  if (scale === 0) return digits;
-  return `${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
+  const negative = value < 0n;
+  const digits = (negative ? -value : value).toString().padStart(scale + 1, '0');
+  const body = scale === 0 ? digits : `${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
+  return negative ? `-${body}` : body;
 }

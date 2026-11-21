@@ -83,6 +83,9 @@ export {
   decimalGreaterThan,
   decimalLessThan,
   decimalsEqual,
+  divideByInt,
+  multiplyDecimals,
+  subtractDecimals,
 } from './decimal.js';
 export type { ApiErrorBody, ApiErrorCode, ApiErrorDetail } from './errors.js';
 export { API_ERROR_CODES, apiErrorSchema } from './errors.js';
