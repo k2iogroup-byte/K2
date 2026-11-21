@@ -9,6 +9,14 @@ import { PERMISSIONS, requirePermission, requireVerifiedEmail } from '../auth/rb
 import { noStore, requireRead, requireWrite, sendJson } from '../auth/request-context.js';
 import type { Phase2Orders } from './phase2-orders.js';
 import { orderActionAllowed } from './phase2-orders.js';
+import {
+  assertEntryProtection,
+  attachFilledProtection,
+  cancelEntryProtection,
+  patchProtection,
+  protectionHash,
+  saveEntryProtection,
+} from './protection.js';
 import type { ExecutableQuote, TradingService } from './trading-service.js';
 import { TradingConflictError, TradingNotFoundError } from './trading-service.js';
 
@@ -20,6 +28,21 @@ const orderBodySchema = z.strictObject({
   orderType: z.enum(['MARKET', 'LIMIT', 'STOP']),
   quantity: z.string().min(1).max(32),
   limitPrice: z.string().min(1).max(32).nullable(),
+  stopLossPrice: z.string().min(1).max(32).nullable().optional(),
+  takeProfitPrice: z.string().min(1).max(32).nullable().optional(),
+});
+
+const protectionBodySchema = z.strictObject({
+  version: z.number().int().nonnegative(),
+  stopLossPrice: z.string().min(1).max(32).nullable(),
+  takeProfitPrice: z.string().min(1).max(32).nullable(),
+});
+
+const protectionResponseSchema = z.strictObject({
+  positionId: z.uuid(),
+  version: z.number().int(),
+  stopLossPrice: z.string().nullable(),
+  takeProfitPrice: z.string().nullable(),
 });
 
 const accountQuerySchema = z.strictObject({
@@ -53,10 +76,14 @@ const orderListSchema = z.strictObject({
 const positionListSchema = z.strictObject({
   positions: z.array(
     z.strictObject({
+      positionId: z.uuid(),
       instrumentId: z.uuid(),
       status: z.string(),
       quantity: z.string(),
       reservedSell: z.string(),
+      stopLossPrice: z.string().nullable(),
+      takeProfitPrice: z.string().nullable(),
+      protectionVersion: z.number().int(),
     }),
   ),
 });
@@ -81,6 +108,7 @@ export function registerTradingRoutes(
       throw new AppError('VALIDATION_ERROR', 400, 'This side and order type are not allowed');
     }
     const quote = await loadQuote(pool, body.instrumentId);
+    await rememberEntryProtection(pool, session.userId, key, body, quote);
     if (body.orderType === 'STOP') {
       if (!body.limitPrice) {
         throw new AppError('VALIDATION_ERROR', 400, 'A stop order needs a trigger price');
@@ -96,7 +124,12 @@ export function registerTradingRoutes(
           triggerPrice: body.limitPrice,
           quote,
         });
-        if (quote) await phase2.onQuote(body.instrumentId, quote);
+        if (placed.rejectReason) {
+          await cancelEntryProtection(pool, body.accountId, body.clientOrderId);
+        } else if (quote) {
+          await phase2.onQuote(body.instrumentId, quote);
+          await attachFilledProtection(pool, body.accountId, body.instrumentId);
+        }
         const viewed = placed.orderId
           ? await phase2.readOrder(session.userId, placed.orderId)
           : null;
@@ -120,6 +153,7 @@ export function registerTradingRoutes(
       body.side === 'BUY' &&
       (await phase2.nativeBuyBlocked(body.accountId, session.userId, body.instrumentId))
     ) {
+      await cancelEntryProtection(pool, body.accountId, body.clientOrderId);
       return await sendJson(reply, 200, orderResponseSchema, {
         orderId: null,
         state: 'REJECTED',
@@ -144,6 +178,12 @@ export function registerTradingRoutes(
         limitPrice: body.limitPrice,
         quote,
       });
+      if (result.rejectReason) {
+        await cancelEntryProtection(pool, body.accountId, body.clientOrderId);
+      } else {
+        await attachFilledProtection(pool, body.accountId, body.instrumentId);
+        if (quote) await phase2.onQuote(body.instrumentId, quote);
+      }
       return await sendJson(reply, 200, orderResponseSchema, {
         ...result,
         executionVenue: 'K2_SIMULATION',
@@ -215,25 +255,104 @@ export function registerTradingRoutes(
     const query = parseWithSchema(accountQuerySchema, request.query);
     await assertOwnAccount(pool, session.userId, query.accountId);
     const rows = await pool.query<{
+      id: string;
       instrument_id: string;
       status: string;
       quantity: string;
       reserved_sell: string;
+      stop_loss_price: string | null;
+      take_profit_price: string | null;
+      protection_version: string | null;
     }>(
-      `SELECT positions.instrument_id, positions.status, positions.quantity::text, positions.reserved_sell::text
+      `SELECT positions.id, positions.instrument_id, positions.status,
+              positions.quantity::text, positions.reserved_sell::text,
+              position_protection.stop_loss_price::text,
+              position_protection.take_profit_price::text,
+              position_protection.version::text AS protection_version
        FROM positions
        JOIN trading_accounts ON trading_accounts.id = positions.account_id
+       LEFT JOIN position_protection ON position_protection.position_id = positions.id
        WHERE positions.account_id = $1 AND trading_accounts.user_id = $2`,
       [query.accountId, session.userId],
     );
     return sendJson(reply, 200, positionListSchema, {
       positions: rows.rows.map((row) => ({
+        positionId: row.id,
         instrumentId: row.instrument_id,
         status: row.status,
         quantity: row.quantity,
         reservedSell: row.reserved_sell,
+        stopLossPrice: row.stop_loss_price,
+        takeProfitPrice: row.take_profit_price,
+        protectionVersion: row.protection_version === null ? 0 : Number(row.protection_version),
       })),
     });
+  });
+
+  app.patch('/trading/positions/:id', async (request, reply) => {
+    noStore(reply);
+    const session = await requireWrite(auth, request);
+    requireVerifiedEmail(session);
+    requirePermission(session, PERMISSIONS.tradingExecute);
+    const key = idempotencyKey(request.headers['idempotency-key']);
+    const params = parseWithSchema(idParamsSchema, request.params);
+    const body = parseWithSchema(protectionBodySchema, request.body);
+    try {
+      const saved = await patchProtection(pool, {
+        positionId: params.id,
+        userId: session.userId,
+        version: body.version,
+        stopLoss: body.stopLossPrice,
+        takeProfit: body.takeProfitPrice,
+        idempotencyKey: key,
+        requestHash: protectionHash(body),
+      });
+      return await sendJson(reply, 200, protectionResponseSchema, saved);
+    } catch (error) {
+      if (error instanceof TradingConflictError) {
+        throw new AppError('CONFLICT', 409, error.message);
+      }
+      throw error;
+    }
+  });
+}
+
+async function rememberEntryProtection(
+  pool: Pool,
+  userId: string,
+  key: string,
+  body: {
+    accountId: string;
+    instrumentId: string;
+    clientOrderId: string;
+    side: 'BUY' | 'SELL';
+    orderType: 'MARKET' | 'LIMIT' | 'STOP';
+    limitPrice: string | null;
+    stopLossPrice?: string | null;
+    takeProfitPrice?: string | null;
+  },
+  quote: ExecutableQuote | null,
+): Promise<void> {
+  const stop = body.stopLossPrice ?? null;
+  const take = body.takeProfitPrice ?? null;
+  if (!stop && !take) return;
+  if (body.side !== 'BUY') {
+    throw new AppError('VALIDATION_ERROR', 400, 'Protection belongs on an entry buy');
+  }
+  const reference = body.orderType === 'MARKET' ? (quote?.ask ?? null) : body.limitPrice;
+  if (!reference) {
+    throw new AppError('VALIDATION_ERROR', 400, 'A quote is required to check protection prices');
+  }
+  await assertEntryProtection(pool, body.instrumentId, stop, take, reference);
+  const seen = await pool.query('SELECT 1 FROM trading_commands WHERE idempotency_key = $1', [key]);
+  if ((seen.rowCount ?? 0) > 0) return;
+  await saveEntryProtection(pool, {
+    accountId: body.accountId,
+    userId,
+    instrumentId: body.instrumentId,
+    clientOrderId: body.clientOrderId,
+    stopLoss: stop,
+    takeProfit: take,
   });
 }
 

@@ -17,6 +17,7 @@ export const API_ERROR_CODES = [
   'CSRF_FAILED',
   'UNRESOLVED_RULE',
   'DEPENDENCY_UNAVAILABLE',
+  'PROTECTION_PRICE_INVALID',
 ] as const;
 
 export const apiErrorDetailSchema = z.strictObject({

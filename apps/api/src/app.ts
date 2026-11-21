@@ -133,7 +133,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         fillsEnabled: options.config.executionFillsEnabled,
         lock: options.tradingLock,
       });
-    const phase2 = new Phase2Orders(options.pool, trading, options.tradingLock ?? null);
+    const phase2 = new Phase2Orders(
+      options.pool,
+      trading,
+      options.tradingLock ?? null,
+      options.config.executionFillsEnabled,
+    );
     registerTradingRoutes(app, auth, trading, phase2, options.pool);
     await registerWebSocket(app, options.config, connections);
     registerMarketDataSocket(app, options.config, auth, engine, connections);

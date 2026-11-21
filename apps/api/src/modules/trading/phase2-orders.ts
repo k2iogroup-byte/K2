@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { canonicalDecimal, decimalGreaterThan, decimalLessThan } from '@k2/shared';
 import type { Pool, PoolClient } from 'pg';
 
+import { attachInstrumentProtection, fireProtection } from './protection.js';
 import type { TradingLock } from './singleton.js';
 import type { ExecutableQuote, TradingOrderResult, TradingService } from './trading-service.js';
 import { TradingConflictError, TradingNotFoundError } from './trading-service.js';
@@ -37,6 +38,7 @@ export class Phase2Orders {
     private readonly pool: Pool,
     private readonly trading: TradingService,
     private readonly lock: TradingLock | null = null,
+    private readonly fillsEnabled = false,
   ) {}
 
   async placeStop(input: StopInput): Promise<TradingOrderResult> {
@@ -145,7 +147,10 @@ export class Phase2Orders {
   async onQuote(instrumentId: string, quote: ExecutableQuote): Promise<void> {
     if (this.lock && !this.lock.fillsAllowed()) return;
     await this.trading.applyQuote(instrumentId, quote);
+    if (!this.fillsEnabled) return;
     await this.fireEntryStops(instrumentId, quote);
+    await attachInstrumentProtection(this.pool, instrumentId);
+    await fireProtection(this.pool, this.trading, instrumentId, quote);
   }
 
   async readOrder(userId: string, orderId: string): Promise<TradingOrderResult | null> {

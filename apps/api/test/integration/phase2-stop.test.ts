@@ -66,7 +66,7 @@ describe('buy stop orders', () => {
       calendar: new OpenEquityCalendar(),
       fillsEnabled: true,
     });
-    const phase2 = new Phase2Orders(pool, trading);
+    const phase2 = new Phase2Orders(pool, trading, null, true);
     const placed = await phase2.placeStop({
       accountId: ids.accountId,
       userId: ids.userId,
