@@ -12,7 +12,7 @@ import type {
   RiskDecision,
   SessionCalendar,
 } from '../../src/modules/trading/risk-authorizer.js';
-import { type TradingLock,tryHoldSingleton } from '../../src/modules/trading/singleton.js';
+import { type TradingLock, tryHoldSingleton } from '../../src/modules/trading/singleton.js';
 import {
   type ExecutableQuote,
   type OrderInput,
@@ -416,7 +416,8 @@ describe('trading orders on postgres', () => {
       const firstAddress = first.app.server.address();
       const secondAddress = second.app.server.address();
       const firstPort = typeof firstAddress === 'object' && firstAddress ? firstAddress.port : 0;
-      const secondPort = typeof secondAddress === 'object' && secondAddress ? secondAddress.port : 0;
+      const secondPort =
+        typeof secondAddress === 'object' && secondAddress ? secondAddress.port : 0;
       const held = (await (await fetch(`http://127.0.0.1:${firstPort}/health`)).json()) as {
         status: string;
         checks: { tradingLock: { status: string } };
