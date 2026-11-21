@@ -78,7 +78,7 @@ describe('database connectivity and migrations', () => {
     await before.app.close();
 
     const applied = await migrateUp(pool, directory);
-    expect(applied).toEqual(['0001', '0002', '0003', '0004', '0005', '0006']);
+    expect(applied).toEqual(['0001', '0002', '0003', '0004', '0005', '0006', '0007']);
     expect(await migrateUp(pool, directory)).toEqual([]);
     const status = await migrationStatus(pool, directory);
     expect(status.map((entry) => entry.version)).toEqual([
@@ -88,6 +88,7 @@ describe('database connectivity and migrations', () => {
       '0004',
       '0005',
       '0006',
+      '0007',
     ]);
     expect(status.every((entry) => entry.state === 'applied')).toBe(true);
 
@@ -111,6 +112,7 @@ describe('database connectivity and migrations', () => {
     });
     await worker.close();
 
+    expect(await migrateDown(pool, directory)).toBe('0007');
     expect(await migrateDown(pool, directory)).toBe('0006');
     const tradingGone = await pool.query(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'liquidity_levels'",
@@ -136,12 +138,14 @@ describe('database connectivity and migrations', () => {
       '0004',
       '0005',
       '0006',
+      '0007',
     ]);
   });
 
   it('rolls migration 0006 back and applies it again', async () => {
     const directory = path.join(apiPackageRoot(), 'db', 'migrations');
     await migrateUp(pool, directory);
+    expect(await migrateDown(pool, directory)).toBe('0007');
     expect(await migrateDown(pool, directory)).toBe('0006');
     const dropped = await pool.query(
       "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'orders'",
@@ -151,7 +155,7 @@ describe('database connectivity and migrations', () => {
       "SELECT 1 FROM information_schema.columns WHERE table_name = 'instruments' AND column_name = 'trading_status'",
     );
     expect(column.rowCount).toBe(0);
-    expect(await migrateUp(pool, directory)).toEqual(['0006']);
+    expect(await migrateUp(pool, directory)).toEqual(['0006', '0007']);
 
     const instrument = await pool.query<{ id: string }>(
       `INSERT INTO instruments (
@@ -188,6 +192,30 @@ describe('database connectivity and migrations', () => {
       "SELECT nextval('order_accept_sequence')::text AS next",
     );
     expect(Number(sequence.rows[0]?.next)).toBeGreaterThan(0);
+  });
+
+  it('rolls migration 0007 back and applies it again', async () => {
+    const directory = path.join(apiPackageRoot(), 'db', 'migrations');
+    await migrateUp(pool, directory);
+    expect(await migrateDown(pool, directory)).toBe('0007');
+    const dropped = await pool.query(
+      "SELECT 1 FROM pg_indexes WHERE indexname = 'orders_one_working_buy_idx'",
+    );
+    expect(dropped.rowCount).toBe(0);
+    const ordersRemain = await pool.query(
+      "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'orders'",
+    );
+    expect(ordersRemain.rowCount).toBe(1);
+    expect(await migrateUp(pool, directory)).toEqual(['0007']);
+    const restored = await pool.query(
+      "SELECT 1 FROM pg_indexes WHERE indexname = 'orders_one_working_buy_idx'",
+    );
+    expect(restored.rowCount).toBe(1);
+    const positionsUnique = await pool.query(
+      `SELECT 1 FROM pg_constraint
+       WHERE conname = 'positions_account_instrument_unique'`,
+    );
+    expect(positionsUnique.rowCount).toBe(1);
   });
 
   it('rolls back a failed migration and refuses a changed checksum', async () => {
@@ -244,6 +272,7 @@ describe('database connectivity and migrations', () => {
       '0004',
       '0005',
       '0006',
+      '0007',
     ]);
     expect(await migrateUp(pool, directory)).toEqual([]);
 
