@@ -18,6 +18,7 @@ import {
   protectionHash,
   saveEntryProtection,
 } from './protection.js';
+import type { TradingFanout } from './trading-fanout.js';
 import type { ExecutableQuote, TradingService } from './trading-service.js';
 import { TradingConflictError, TradingNotFoundError } from './trading-service.js';
 
@@ -101,6 +102,7 @@ export function registerTradingRoutes(
   trading: TradingService,
   phase2: Phase2Orders,
   pool: Pool,
+  fanout: TradingFanout,
 ): void {
   app.post('/trading/orders', async (request, reply) => {
     noStore(reply);
@@ -138,6 +140,7 @@ export function registerTradingRoutes(
         const viewed = placed.orderId
           ? await phase2.readOrder(session.userId, placed.orderId)
           : null;
+        fanout.publish(session.userId, { type: 'order', accountId: body.accountId });
         return await sendJson(reply, 200, orderResponseSchema, {
           ...(viewed ?? placed),
           executionVenue: 'K2_SIMULATION',
@@ -159,6 +162,7 @@ export function registerTradingRoutes(
       (await phase2.nativeBuyBlocked(body.accountId, session.userId, body.instrumentId))
     ) {
       await cancelEntryProtection(pool, body.accountId, body.clientOrderId);
+      fanout.publish(session.userId, { type: 'order', accountId: body.accountId });
       return await sendJson(reply, 200, orderResponseSchema, {
         orderId: null,
         state: 'REJECTED',
@@ -189,6 +193,7 @@ export function registerTradingRoutes(
         await attachFilledProtection(pool, body.accountId, body.instrumentId);
         if (quote) await phase2.onQuote(body.instrumentId, quote);
       }
+      fanout.publish(session.userId, { type: 'order', accountId: body.accountId });
       return await sendJson(reply, 200, orderResponseSchema, {
         ...result,
         executionVenue: 'K2_SIMULATION',
@@ -312,6 +317,7 @@ export function registerTradingRoutes(
         idempotencyKey: key,
         requestHash: protectionHash(body),
       });
+      await publishAccount(pool, fanout, session.userId, params.id, 'protection');
       return await sendJson(reply, 200, protectionResponseSchema, saved);
     } catch (error) {
       if (error instanceof TradingConflictError) {
@@ -339,6 +345,7 @@ export function registerTradingRoutes(
         requestHash: protectionHash({ positionId: params.id, percentage: body.percentage }),
         quote,
       });
+      await publishAccount(pool, fanout, session.userId, params.id, 'position');
       return await sendJson(reply, 200, orderResponseSchema, {
         ...result,
         executionVenue: 'K2_SIMULATION',
@@ -390,6 +397,22 @@ async function rememberEntryProtection(
     stopLoss: stop,
     takeProfit: take,
   });
+}
+
+async function publishAccount(
+  pool: Pool,
+  fanout: TradingFanout,
+  userId: string,
+  positionId: string,
+  type: 'position' | 'protection',
+): Promise<void> {
+  const row = await pool.query<{ account_id: string }>(
+    'SELECT account_id FROM positions WHERE id = $1',
+    [positionId],
+  );
+  const accountId = row.rows[0]?.account_id;
+  if (!accountId) return;
+  fanout.publish(userId, { type, accountId });
 }
 
 function idempotencyKey(value: string | string[] | undefined): string {

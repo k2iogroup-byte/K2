@@ -8,6 +8,7 @@ import { DEFAULT_SOCKET_GUARD, type SocketGuard } from '../../infrastructure/ws/
 import { readHeaderOrigin, socketOriginDecision } from '../../infrastructure/ws/socket-origin.js';
 import { readOpaqueCookie, SESSION_COOKIE } from '../auth/cookies.js';
 import { type AuthContext, PERMISSIONS } from '../auth/rbac.js';
+import type { TradingFanout } from './trading-fanout.js';
 
 type TradingSocket = {
   bufferedAmount?: number;
@@ -26,6 +27,7 @@ export function registerTradingSocket(
   config: Pick<AppConfig, 'corsOrigins'>,
   auth: SessionLoader,
   connections: ConnectionLimiter,
+  fanout: TradingFanout,
   guard: SocketGuard = DEFAULT_SOCKET_GUARD,
 ): void {
   app.get('/ws/trading', { websocket: true }, (socket: TradingSocket, request: FastifyRequest) => {
@@ -34,6 +36,7 @@ export function registerTradingSocket(
       auth,
       connections,
       guard,
+      fanout,
       sessionToken: readOpaqueCookie(request, SESSION_COOKIE),
     });
   });
@@ -41,18 +44,20 @@ export function registerTradingSocket(
 
 export function openTradingSocket(
   socket: TradingSocket,
-  request: FastifyRequest,
+  request: { url: string; ip: string; headers: unknown },
   endpoint: {
     allowedOrigins: readonly string[];
     auth: SessionLoader;
     connections: ConnectionLimiter;
     guard: SocketGuard;
+    fanout: TradingFanout;
     sessionToken: string | null;
   },
 ): void {
   let closed = false;
   let ready = false;
   let acquired = false;
+  let joinedUser: string | null = null;
   const messages = new MessageWindow(
     endpoint.guard.maxMessagesPerWindow,
     endpoint.guard.messageWindowMs,
@@ -61,6 +66,7 @@ export function openTradingSocket(
   const finish = (): void => {
     if (closed) return;
     closed = true;
+    if (joinedUser) endpoint.fanout.leave(joinedUser, socket);
     if (acquired) endpoint.connections.release(ip);
   };
   const closeSocket = (code: number, reason: string): void => {
@@ -120,6 +126,11 @@ export function openTradingSocket(
         closeSocket(1008, 'sign in required');
         return;
       }
+      if (!endpoint.fanout.join(session.userId, socket)) {
+        closeSocket(1008, 'too many connections');
+        return;
+      }
+      joinedUser = session.userId;
       clearTimeout(timer);
       ready = true;
       socket.send(

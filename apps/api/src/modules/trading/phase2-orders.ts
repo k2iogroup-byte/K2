@@ -5,6 +5,7 @@ import type { Pool, PoolClient } from 'pg';
 
 import { attachInstrumentProtection, fireProtection } from './protection.js';
 import type { TradingLock } from './singleton.js';
+import type { TradingFanout } from './trading-fanout.js';
 import type { ExecutableQuote, TradingOrderResult, TradingService } from './trading-service.js';
 import { TradingConflictError, TradingNotFoundError } from './trading-service.js';
 
@@ -39,6 +40,7 @@ export class Phase2Orders {
     private readonly trading: TradingService,
     private readonly lock: TradingLock | null = null,
     private readonly fillsEnabled = false,
+    private readonly fanout: TradingFanout | null = null,
   ) {}
 
   async placeStop(input: StopInput): Promise<TradingOrderResult> {
@@ -151,6 +153,37 @@ export class Phase2Orders {
     await this.fireEntryStops(instrumentId, quote);
     await attachInstrumentProtection(this.pool, instrumentId);
     await fireProtection(this.pool, this.trading, instrumentId, quote);
+    await this.publishFills(instrumentId, quote.quoteUpdateId);
+  }
+
+  private async publishFills(instrumentId: string, quoteUpdateId: string): Promise<void> {
+    if (!this.fanout) return;
+    const fills = await this.pool.query<{
+      user_id: string;
+      account_id: string;
+      quantity: string;
+      price: string;
+    }>(
+      `SELECT orders.user_id, orders.account_id, executions.quantity::text, executions.price::text
+         FROM executions
+         JOIN orders ON orders.id = executions.order_id
+        WHERE executions.instrument_id = $1 AND executions.quote_update_id = $2`,
+      [instrumentId, quoteUpdateId],
+    );
+    const accounts = new Set<string>();
+    for (const fill of fills.rows) {
+      this.fanout.publish(fill.user_id, {
+        type: 'fill',
+        accountId: fill.account_id,
+      });
+      accounts.add(`${fill.user_id}:${fill.account_id}`);
+    }
+    for (const pair of accounts) {
+      const split = pair.split(':');
+      const userId = split[0] ?? '';
+      const accountId = split[1] ?? '';
+      this.fanout.publish(userId, { type: 'position', accountId });
+    }
   }
 
   async readOrder(userId: string, orderId: string): Promise<TradingOrderResult | null> {

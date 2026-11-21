@@ -24,6 +24,7 @@ import { createProvider } from './modules/market-data/provider.js';
 import { MarketDataStore } from './modules/market-data/store.js';
 import { Phase2Orders } from './modules/trading/phase2-orders.js';
 import type { TradingLock } from './modules/trading/singleton.js';
+import { TradingFanout } from './modules/trading/trading-fanout.js';
 import { registerTradingRoutes } from './modules/trading/trading-routes.js';
 import { TradingService } from './modules/trading/trading-service.js';
 import { registerTradingSocket } from './modules/trading/trading-ws.js';
@@ -133,16 +134,18 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         fillsEnabled: options.config.executionFillsEnabled,
         lock: options.tradingLock,
       });
+    const fanout = new TradingFanout();
     const phase2 = new Phase2Orders(
       options.pool,
       trading,
       options.tradingLock ?? null,
       options.config.executionFillsEnabled,
+      fanout,
     );
-    registerTradingRoutes(app, auth, trading, phase2, options.pool);
+    registerTradingRoutes(app, auth, trading, phase2, options.pool, fanout);
     await registerWebSocket(app, options.config, connections);
     registerMarketDataSocket(app, options.config, auth, engine, connections);
-    registerTradingSocket(app, options.config, auth, connections);
+    registerTradingSocket(app, options.config, auth, connections, fanout);
     return app;
   }
   await registerWebSocket(app, options.config, connections);
