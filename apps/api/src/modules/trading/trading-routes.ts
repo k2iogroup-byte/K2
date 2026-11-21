@@ -7,6 +7,7 @@ import { parseWithSchema } from '../../infrastructure/http/validation.js';
 import type { AuthService } from '../auth/auth-service.js';
 import { PERMISSIONS, requirePermission, requireVerifiedEmail } from '../auth/rbac.js';
 import { noStore, requireRead, requireWrite, sendJson } from '../auth/request-context.js';
+import { closeByPercent } from './close-position.js';
 import type { Phase2Orders } from './phase2-orders.js';
 import { orderActionAllowed } from './phase2-orders.js';
 import {
@@ -36,6 +37,10 @@ const protectionBodySchema = z.strictObject({
   version: z.number().int().nonnegative(),
   stopLossPrice: z.string().min(1).max(32).nullable(),
   takeProfitPrice: z.string().min(1).max(32).nullable(),
+});
+
+const closeBodySchema = z.strictObject({
+  percentage: z.union([z.literal(25), z.literal(50), z.literal(75), z.literal(100)]),
 });
 
 const protectionResponseSchema = z.strictObject({
@@ -315,6 +320,37 @@ export function registerTradingRoutes(
       throw error;
     }
   });
+
+  app.post('/trading/positions/:id/close', async (request, reply) => {
+    noStore(reply);
+    const session = await requireWrite(auth, request);
+    requireVerifiedEmail(session);
+    requirePermission(session, PERMISSIONS.tradingExecute);
+    const key = idempotencyKey(request.headers['idempotency-key']);
+    const params = parseWithSchema(idParamsSchema, request.params);
+    const body = parseWithSchema(closeBodySchema, request.body);
+    const quote = await loadQuoteForPosition(pool, params.id);
+    try {
+      const result = await closeByPercent(pool, trading, {
+        positionId: params.id,
+        userId: session.userId,
+        percentage: body.percentage,
+        idempotencyKey: key,
+        requestHash: protectionHash({ positionId: params.id, percentage: body.percentage }),
+        quote,
+      });
+      return await sendJson(reply, 200, orderResponseSchema, {
+        ...result,
+        executionVenue: 'K2_SIMULATION',
+        liveMarketData: false,
+      });
+    } catch (error) {
+      if (error instanceof TradingConflictError) {
+        throw new AppError('CONFLICT', 409, error.message);
+      }
+      throw error;
+    }
+  });
 }
 
 async function rememberEntryProtection(
@@ -372,6 +408,19 @@ async function assertOwnAccount(pool: Pool, userId: string, accountId: string): 
   if ((owned.rowCount ?? 0) === 0) {
     throw new AppError('NOT_FOUND', 404, 'Trading account not found');
   }
+}
+
+async function loadQuoteForPosition(
+  pool: Pool,
+  positionId: string,
+): Promise<ExecutableQuote | null> {
+  const row = await pool.query<{ instrument_id: string }>(
+    'SELECT instrument_id FROM positions WHERE id = $1',
+    [positionId],
+  );
+  const instrumentId = row.rows[0]?.instrument_id;
+  if (!instrumentId) return null;
+  return loadQuote(pool, instrumentId);
 }
 
 async function loadQuote(pool: Pool, instrumentId: string): Promise<ExecutableQuote | null> {
