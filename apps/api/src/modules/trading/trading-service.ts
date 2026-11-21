@@ -13,6 +13,7 @@ import {
 } from '@k2/shared';
 import type { Pool, PoolClient } from 'pg';
 
+import { liquiditySource, type LiquidityTake, takeLiquidity } from './liquidity.js';
 import {
   ClosedEquityCalendar,
   FailClosedRiskAuthorizer,
@@ -409,17 +410,6 @@ export class TradingService {
       (input.side === 'BUY'
         ? !decimalLessThan(limit ?? touch, touch, priceScale)
         : !decimalGreaterThan(limit ?? touch, touch, priceScale));
-    const fillQty = marketable ? minDecimal(quantity, displayed, qtyScale) : zero(qtyScale);
-    if (input.orderType === 'MARKET' && !decimalGreaterThan(fillQty, '0', qtyScale)) {
-      return this.persistReject(
-        client,
-        input,
-        initialCapital,
-        instrument,
-        'NO_LIQUIDITY',
-        decision,
-      );
-    }
     const reservePrice = input.orderType === 'LIMIT' && limit ? limit : touch;
     const fullCost = this.cashNeed(input.side, quantity, reservePrice, priceScale, qtyScale);
     const cash = await this.lockCash(client, input.accountId, initialCapital);
@@ -436,6 +426,31 @@ export class TradingService {
       );
     }
 
+    let taken: LiquidityTake | null = null;
+    if (marketable) {
+      taken = await takeLiquidity(client, {
+        instrumentId: input.instrumentId,
+        source: liquiditySource(quote.priceOrigin),
+        bookSide: input.side === 'BUY' ? 'ASK' : 'BID',
+        price: touch,
+        priceScale,
+        quoteUpdateId: quote.quoteUpdateId,
+        displayed,
+        want: quantity,
+        quantityScale: qtyScale,
+      });
+    }
+    const fillQty = taken?.quantity ?? zero(qtyScale);
+    if (input.orderType === 'MARKET' && !decimalGreaterThan(fillQty, '0', qtyScale)) {
+      return this.persistReject(
+        client,
+        input,
+        initialCapital,
+        instrument,
+        'NO_LIQUIDITY',
+        decision,
+      );
+    }
     const unfilled = subtractDecimals(quantity, fillQty, qtyScale);
     const remainderRests =
       input.orderType === 'LIMIT' && decimalGreaterThan(unfilled, '0', qtyScale);
@@ -544,6 +559,28 @@ export class TradingService {
         sellReserved,
       });
       await this.outbox(client, input.accountId, executionId, filledNotional, filledFee);
+      if (taken && decimalGreaterThan(taken.quantity, '0', qtyScale)) {
+        await client.query(
+          `INSERT INTO liquidity_allocations (
+             execution_id, instrument_id, book_side, price, displayed_qty, consumed_before,
+             take_qty, consumed_after, accept_sequence, quote_update_id
+           )
+           SELECT $1, $2, $3, $4, $5, $6, $7, $8, accept_sequence, $9
+           FROM orders WHERE id = $10`,
+          [
+            executionId,
+            input.instrumentId,
+            taken.bookSide,
+            taken.price,
+            taken.displayed,
+            taken.consumedBefore,
+            taken.quantity,
+            taken.consumedAfter,
+            taken.quoteUpdateId,
+            orderId,
+          ],
+        );
+      }
     } else if (
       input.side === 'SELL' &&
       decimalGreaterThan(sellReserved, '0', qtyScale) &&
@@ -991,12 +1028,6 @@ export class TradingService {
 function openingFee(notional: string): string {
   const scaled = multiplyDecimals(notional, OPENING_COMMISSION_PCT, MONEY, MONEY, MONEY);
   return divideByInt(scaled, MONEY, 100n, MONEY);
-}
-
-function minDecimal(left: string, right: string, scale: number): string {
-  return decimalLessThan(left, right, scale)
-    ? canonicalDecimal(left, scale)
-    : canonicalDecimal(right, scale);
 }
 
 function zero(scale: number): string {

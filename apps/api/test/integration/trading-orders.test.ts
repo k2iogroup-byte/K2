@@ -12,6 +12,7 @@ import type {
   RiskDecision,
   SessionCalendar,
 } from '../../src/modules/trading/risk-authorizer.js';
+import { tryHoldSingleton } from '../../src/modules/trading/singleton.js';
 import {
   type ExecutableQuote,
   type OrderInput,
@@ -243,6 +244,114 @@ describe('trading orders on postgres', () => {
     expect(executions.rowCount).toBe(1);
   });
 
+  it('shares 0.5 of ask liquidity across ten buyers and does not refill it', async () => {
+    const first = await makeAccount('EQUITIES', 'USD');
+    const ids = [first];
+    for (let index = 0; index < 9; index += 1) {
+      ids.push(await makeAccount('EQUITIES', 'USD', first.instrumentId));
+    }
+    const shared = quote({ askSize: '0.50000000', quoteUpdateId: '900' });
+    const service = engine();
+    const results = await Promise.all(
+      ids.map((id) => service.submit(order(id, { quote: shared }))),
+    );
+    expect(results.filter((result) => result.rejectReason === null)).toHaveLength(1);
+    const extra = await makeAccount('EQUITIES', 'USD', first.instrumentId);
+    const again = await service.submit(order(extra, { quote: shared }));
+    expect(again.rejectReason).toBe('NO_LIQUIDITY');
+    const stale = await service.submit(
+      order(await makeAccount('EQUITIES', 'USD', first.instrumentId), {
+        quote: quote({ askSize: '5.00000000', quoteUpdateId: '899' }),
+      }),
+    );
+    expect(stale.rejectReason).toBe('NO_LIQUIDITY');
+    const restarted = engine();
+    const afterRestart = await restarted.submit(
+      order(await makeAccount('EQUITIES', 'USD', first.instrumentId), { quote: shared }),
+    );
+    expect(afterRestart.rejectReason).toBe('NO_LIQUIDITY');
+    const total = await pool.query<{ qty: string }>(
+      `SELECT COALESCE(SUM(quantity), 0)::text AS qty FROM executions WHERE instrument_id = $1`,
+      [first.instrumentId],
+    );
+    expect(total.rows[0]?.qty).toBe('0.50000000');
+  });
+
+  it('keeps earlier consumption when a price leaves and comes back', async () => {
+    const ids = await makeAccount('EQUITIES', 'USD');
+    const service = engine();
+    const first = await service.submit(
+      order(ids, {
+        quantity: '0.20000000',
+        quote: quote({ ask: '10.00', askSize: '1.00000000', quoteUpdateId: '1' }),
+      }),
+    );
+    expect(first.filledQuantity).toBe('0.20000000');
+    await service.submit(
+      order(await makeAccount('EQUITIES', 'USD', ids.instrumentId), {
+        quantity: '0.10000000',
+        quote: quote({ ask: '11.00', askSize: '1.00000000', quoteUpdateId: '2' }),
+      }),
+    );
+    const returned = await service.submit(
+      order(await makeAccount('EQUITIES', 'USD', ids.instrumentId), {
+        quantity: '1.00000000',
+        quote: quote({ ask: '10.00', askSize: '0.50000000', quoteUpdateId: '3' }),
+      }),
+    );
+    expect(returned.filledQuantity).toBe('0.30000000');
+    expect(returned.state).toBe('CANCELLED');
+  });
+
+  it('rebuilds the working queue from persisted accept sequence', async () => {
+    const ids = await makeAccount('EQUITIES', 'USD');
+    const service = engine();
+    await service.submit(
+      order(ids, {
+        orderType: 'LIMIT',
+        limitPrice: '9.00',
+        quote: quote({ ask: '10.00', quoteUpdateId: '50' }),
+      }),
+    );
+    const second = await makeAccount('EQUITIES', 'USD', ids.instrumentId);
+    await service.submit(
+      order(second, {
+        orderType: 'LIMIT',
+        limitPrice: '9.00',
+        quote: quote({ ask: '10.00', quoteUpdateId: '51' }),
+      }),
+    );
+    const before = await pool.query<{ accept_sequence: string }>(
+      `SELECT accept_sequence::text FROM orders
+       WHERE instrument_id = $1 AND state = 'OPEN'
+       ORDER BY accept_sequence`,
+      [ids.instrumentId],
+    );
+    expect(before.rowCount).toBe(2);
+    const restarted = engine();
+    await restarted.position(ids.accountId, ids.instrumentId);
+    const after = await pool.query<{ accept_sequence: string }>(
+      `SELECT accept_sequence::text FROM orders
+       WHERE instrument_id = $1 AND state = 'OPEN'
+       ORDER BY accept_sequence`,
+      [ids.instrumentId],
+    );
+    expect(after.rows.map((row) => row.accept_sequence)).toEqual(
+      before.rows.map((row) => row.accept_sequence),
+    );
+  });
+
+  it('lets only one dedicated connection hold the trading lock', async () => {
+    const url = databaseUrl;
+    const holder = await tryHoldSingleton(url);
+    expect(holder).not.toBeNull();
+    expect(await tryHoldSingleton(url)).toBeNull();
+    await holder?.end();
+    const next = await tryHoldSingleton(url);
+    expect(next).not.toBeNull();
+    await next?.end();
+  });
+
   it('rejects a second working buy and a buy against an open position in the database', async () => {
     const ids = await makeAccount('EQUITIES', 'USD');
     const client = await pool.connect();
@@ -285,6 +394,7 @@ async function insertWorkingBuy(
 async function makeAccount(
   market: 'EQUITIES' | 'CRYPTO',
   quoteAsset: string,
+  existingInstrumentId?: string,
 ): Promise<{
   userId: string;
   accountId: string;
@@ -353,22 +463,26 @@ async function makeAccount(
       [accountId, `activate-${suffix}`],
     );
     await client.query(`UPDATE trading_accounts SET state = 'ACTIVE' WHERE id = $1`, [accountId]);
-    const symbol = `${market === 'EQUITIES' ? 'EQ' : 'CR'}${suffix}`.slice(0, 20).toUpperCase();
-    const instrument = await client.query<{ id: string }>(
-      `INSERT INTO instruments (
-         market, venue, symbol, provider_symbol, price_scale, quantity_scale, trading_status, quote_asset
-       ) VALUES ($1, $2, $3, $4, 2, 8, 'TRADABLE', $5)
-       RETURNING id`,
-      [
-        market,
-        market === 'EQUITIES' ? 'NASDAQ' : 'BINANCE_SPOT',
-        symbol,
-        symbol.toLowerCase(),
-        quoteAsset,
-      ],
-    );
+    let instrumentId = existingInstrumentId;
+    if (!instrumentId) {
+      const symbol = `${market === 'EQUITIES' ? 'EQ' : 'CR'}${suffix}`.slice(0, 20).toUpperCase();
+      const instrument = await client.query<{ id: string }>(
+        `INSERT INTO instruments (
+           market, venue, symbol, provider_symbol, price_scale, quantity_scale, trading_status, quote_asset
+         ) VALUES ($1, $2, $3, $4, 2, 8, 'TRADABLE', $5)
+         RETURNING id`,
+        [
+          market,
+          market === 'EQUITIES' ? 'NASDAQ' : 'BINANCE_SPOT',
+          symbol,
+          symbol.toLowerCase(),
+          quoteAsset,
+        ],
+      );
+      instrumentId = requiredId(instrument.rows[0]?.id);
+    }
     await client.query('COMMIT');
-    return { userId, accountId, instrumentId: requiredId(instrument.rows[0]?.id) };
+    return { userId, accountId, instrumentId };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
