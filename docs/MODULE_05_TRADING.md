@@ -56,10 +56,10 @@ A quote accepted by the market-data engine, from the fixture provider or the Bin
 
 A risk-reducing close is a close percentage, a stop-loss or take-profit, or a sell whose quantity does not exceed the open long. It skips the closed-calendar and stale-feed rejections and the fail-closed risk stub. The audit records `APPROVE` / `RISK_REDUCING`. Buys are unchanged and still fail closed.
 
-| Situation | Result | `price_basis` |
-| --- | --- | --- |
-| Feed is fresh and the equity session is open | Fill now at the bid, using the shared book | `FRESH` |
+| Situation                                                      | Result                                                                              | `price_basis`    |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------- |
+| Feed is fresh and the equity session is open                   | Fill now at the bid, using the shared book                                          | `FRESH`          |
 | Feed is stale or disconnected, or the equity session is closed | Accept the close, reserve the quantity, fill the whole amount at the next fresh bid | `DEFERRED_FRESH` |
-| No quote has ever been stored | Fill now at the position average entry | `ENTRY_FALLBACK` |
+| No quote has ever been stored                                  | Fill now at the position average entry                                              | `ENTRY_FALLBACK` |
 
 The waiting close is an `OPEN` order plus a row in `deferred_closes`. It is not cancelled and the client does not choose the price. A later sell or trigger cannot sell more than the quantity that is still free.

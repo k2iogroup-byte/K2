@@ -164,7 +164,7 @@ function staleAfter(
 
 export class MarketDataEngine {
   private readonly instruments = new Map<string, InstrumentState>();
-  private readonly listeners = new Set<(event: DistributionEvent) => void>();
+  private readonly listeners = new Set<(event: DistributionEvent) => void | Promise<void>>();
   private connected = false;
   private awaitingFreshEvent = true;
   private readonly bars = new Map<string, Bar>();
@@ -198,9 +198,9 @@ export class MarketDataEngine {
     });
   }
 
-  subscribe(listener: (event: DistributionEvent) => void): () => void {
+  subscribe(listener: (event: DistributionEvent) => void | Promise<void>): () => void {
     this.listeners.add(listener);
-    this.emit({ type: 'feed', health: this.health() });
+    void this.emit({ type: 'feed', health: this.health() });
     return () => {
       this.listeners.delete(listener);
     };
@@ -277,13 +277,13 @@ export class MarketDataEngine {
         this.quotes.set(quote.symbol, quote);
         const health = this.health(receivedAt);
         await this.options.sink?.saveQuote(quote, health.feedState);
-        this.emit({
+        await this.emit({
           type: 'quote',
           quote,
           feedState: health.feedState,
           liveMarketData: health.liveMarketData,
         });
-        this.emitGap(quote.symbol, previousSequence, event.sequence);
+        await this.emitGap(quote.symbol, previousSequence, event.sequence);
         await this.publishFeed();
         return { status: 'accepted', kind: 'quote' };
       }
@@ -297,13 +297,13 @@ export class MarketDataEngine {
       const updated = this.applyTrade(trade);
       const health = this.health(receivedAt);
       await this.options.sink?.saveBars(updated);
-      this.emit({
+      await this.emit({
         type: 'trade',
         trade,
         feedState: health.feedState,
         liveMarketData: health.liveMarketData,
       });
-      this.emitGap(trade.symbol, previousSequence, event.sequence);
+      await this.emitGap(trade.symbol, previousSequence, event.sequence);
       await this.publishFeed();
       return { status: 'accepted', kind: 'trade' };
     } catch (error) {
@@ -454,19 +454,19 @@ export class MarketDataEngine {
     const health = this.health();
     this.feedState = health.feedState;
     if (previous !== health.feedState) await this.options.sink?.saveFeed(health);
-    this.emit({ type: 'feed', health });
+    await this.emit({ type: 'feed', health });
   }
 
-  private emitGap(symbol: string, previous: number | null, sequence: number): void {
+  private async emitGap(symbol: string, previous: number | null, sequence: number): Promise<void> {
     if (previous !== null && sequence > previous + 1) {
-      this.emit({ type: 'gap', symbol, previousSequence: previous, sequence });
+      await this.emit({ type: 'gap', symbol, previousSequence: previous, sequence });
     }
   }
 
-  private emit(event: DistributionEvent): void {
+  private async emit(event: DistributionEvent): Promise<void> {
     for (const listener of this.listeners) {
       try {
-        listener(event);
+        await listener(event);
       } catch {
         // One consumer must not stop delivery to the others.
       }

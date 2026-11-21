@@ -26,6 +26,7 @@ export function bindTradingQuotes(
     pending = pending
       .then(() => phase2.onQuote(event.quote.instrumentId, quote))
       .catch(() => undefined);
+    return pending;
   });
   return {
     unsubscribe,
