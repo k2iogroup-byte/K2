@@ -13,6 +13,7 @@ import {
 } from '@k2/shared';
 import type { Pool, PoolClient } from 'pg';
 
+import { DEFAULT_STALE_AFTER_MS } from '../market-data/engine.js';
 import { liquiditySource, type LiquidityTake, takeLiquidity } from './liquidity.js';
 import {
   ClosedEquityCalendar,
@@ -22,6 +23,7 @@ import {
   type SessionCalendar,
 } from './risk-authorizer.js';
 import type { TradingLock } from './singleton.js';
+import { quotePriceToUsd, settlesAsUsd } from './usdt-usd.js';
 
 const MONEY = 4;
 /**
@@ -371,8 +373,8 @@ export class TradingService {
       input.side === 'SELL' &&
       state === 'ACTIVE' &&
       instrument.trading_status === 'TRADABLE' &&
-      instrument.market !== 'CRYPTO' &&
-      instrument.quote_asset === 'USD'
+      ((instrument.market === 'EQUITIES' && instrument.quote_asset === 'USD') ||
+        (instrument.market === 'CRYPTO' && instrument.quote_asset === 'USDT'))
     );
   }
 
@@ -501,7 +503,8 @@ export class TradingService {
 
   private precheck(input: OrderInput, state: string, instrument: InstrumentRow): string | null {
     if (state !== 'ACTIVE') return 'ACCOUNT_NOT_TRADABLE';
-    if (instrument.market === 'CRYPTO' || instrument.quote_asset !== 'USD') {
+    const quoteAsset = instrument.quote_asset;
+    if (!quoteAsset || !cryptoOrEquitySettlement(instrument.market, quoteAsset)) {
       return 'QUOTE_CURRENCY_UNRESOLVED';
     }
     const quote = input.quote;
@@ -512,25 +515,33 @@ export class TradingService {
     if (!quote || quote.feedState !== 'LIVE' || !/^[0-9]+$/.test(quote.quoteUpdateId)) {
       return 'FEED_UNAVAILABLE';
     }
+    if (
+      instrument.market === 'CRYPTO' &&
+      Date.now() - quote.receivedAt.getTime() > DEFAULT_STALE_AFTER_MS.CRYPTO
+    ) {
+      return 'FEED_UNAVAILABLE';
+    }
     try {
       canonicalDecimal(input.quantity, instrument.quantity_scale);
-      canonicalDecimal(quote.bid, instrument.price_scale);
-      canonicalDecimal(quote.ask, instrument.price_scale);
+      quotePriceToUsd(quoteAsset, quote.bid, instrument.price_scale);
+      quotePriceToUsd(quoteAsset, quote.ask, instrument.price_scale);
       canonicalDecimal(quote.bidSize, instrument.quantity_scale);
       canonicalDecimal(quote.askSize, instrument.quantity_scale);
       if (input.orderType === 'LIMIT') {
         if (!input.limitPrice) return 'INVALID_ORDER';
-        canonicalDecimal(input.limitPrice, instrument.price_scale);
+        quotePriceToUsd(quoteAsset, input.limitPrice, instrument.price_scale);
       }
     } catch (error) {
       if (error instanceof DecimalError) return 'INVALID_ORDER';
       throw error;
     }
+    const bid = quotePriceToUsd(quoteAsset, quote.bid, instrument.price_scale);
+    const ask = quotePriceToUsd(quoteAsset, quote.ask, instrument.price_scale);
     if (
       !decimalGreaterThan(input.quantity, '0', instrument.quantity_scale) ||
-      !decimalGreaterThan(quote.bid, '0', instrument.price_scale) ||
-      !decimalGreaterThan(quote.ask, '0', instrument.price_scale) ||
-      decimalLessThan(quote.ask, quote.bid, instrument.price_scale)
+      !decimalGreaterThan(bid, '0', instrument.price_scale) ||
+      !decimalGreaterThan(ask, '0', instrument.price_scale) ||
+      decimalLessThan(ask, bid, instrument.price_scale)
     ) {
       return 'FEED_UNAVAILABLE';
     }
@@ -579,8 +590,8 @@ export class TradingService {
     decision: RiskDecision,
     pricing: 'book' | 'full' | 'defer' = 'book',
   ): Promise<TradingOrderResult> {
-    const quote = input.quote;
-    if (!quote)
+    const rawQuote = input.quote;
+    if (!rawQuote)
       return this.persistReject(
         client,
         input,
@@ -591,13 +602,21 @@ export class TradingService {
       );
     const priceScale = instrument.price_scale;
     const qtyScale = instrument.quantity_scale;
+    const quoteAsset = instrument.quote_asset ?? 'USD';
+    const quote = {
+      ...rawQuote,
+      bid: quotePriceToUsd(quoteAsset, rawQuote.bid, priceScale),
+      ask: quotePriceToUsd(quoteAsset, rawQuote.ask, priceScale),
+    };
     const quantity = canonicalDecimal(input.quantity, qtyScale);
     const touch = canonicalDecimal(input.side === 'BUY' ? quote.ask : quote.bid, priceScale);
     const displayed = canonicalDecimal(
       input.side === 'BUY' ? quote.askSize : quote.bidSize,
       qtyScale,
     );
-    const limit = input.limitPrice ? canonicalDecimal(input.limitPrice, priceScale) : null;
+    const limit = input.limitPrice
+      ? quotePriceToUsd(quoteAsset, input.limitPrice, priceScale)
+      : null;
     const marketable =
       input.orderType === 'MARKET' ||
       (input.side === 'BUY'
@@ -1292,7 +1311,16 @@ export class TradingService {
     if (!instrument) return false;
     const priceScale = instrument.price_scale;
     const qtyScale = instrument.quantity_scale;
-    const touch = canonicalDecimal(order.side === 'BUY' ? quote.ask : quote.bid, priceScale);
+    const asset = instrument.quote_asset;
+    const bid =
+      asset && settlesAsUsd(asset)
+        ? quotePriceToUsd(asset, quote.bid, priceScale)
+        : canonicalDecimal(quote.bid, priceScale);
+    const ask =
+      asset && settlesAsUsd(asset)
+        ? quotePriceToUsd(asset, quote.ask, priceScale)
+        : canonicalDecimal(quote.ask, priceScale);
+    const touch = order.side === 'BUY' ? ask : bid;
     const limit = order.limit_price ? canonicalDecimal(order.limit_price, priceScale) : null;
     const marketable =
       order.order_type === 'MARKET' ||
@@ -1503,6 +1531,13 @@ export class TradingService {
       client.release();
     }
   }
+}
+
+function cryptoOrEquitySettlement(market: string, quoteAsset: string | null): boolean {
+  if (!settlesAsUsd(quoteAsset)) return false;
+  if (market === 'CRYPTO') return quoteAsset === 'USDT';
+  if (market === 'EQUITIES') return quoteAsset === 'USD';
+  return false;
 }
 
 function openingFee(notional: string): string {

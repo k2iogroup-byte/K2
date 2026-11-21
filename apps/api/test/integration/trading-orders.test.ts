@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { apiPackageRoot } from '../../src/config/paths.js';
 import { migrateUp } from '../../src/infrastructure/db/migrator.js';
+import { Phase2Orders } from '../../src/modules/trading/phase2-orders.js';
 import type {
   RiskAuthorizer,
   RiskDecision,
@@ -189,10 +190,20 @@ describe('trading orders on postgres', () => {
     expect(executions.rowCount).toBe(1);
   });
 
-  it('rejects crypto, a closed equity session, a stale quote, and a fail-closed authorizer', async () => {
+  it('rejects crypto through the risk stub, a closed equity session, a stale quote, and a fail-closed authorizer', async () => {
     const equity = await makeAccount('EQUITIES', 'USD');
     const crypto = await makeAccount('CRYPTO', 'USDT');
-    expect((await engine().submit(order(crypto))).rejectReason).toBe('QUOTE_CURRENCY_UNRESOLVED');
+    const stub = new TradingService(pool, {
+      calendar: new OpenEquityCalendar(),
+      fillsEnabled: true,
+    });
+    expect(
+      (
+        await stub.submit(
+          order(crypto, { quote: quote({ receivedAt: new Date(), quoteUpdateId: '250' }) }),
+        )
+      ).rejectReason,
+    ).toBe('TEMPORARILY_UNAVAILABLE');
     const closed = new TradingService(pool, {
       authorizer: new ApprovingRiskAuthorizer(),
       fillsEnabled: true,
@@ -215,6 +226,126 @@ describe('trading orders on postgres', () => {
       equity.accountId,
     ]);
     expect(rows.rowCount).toBe(0);
+  });
+
+  it('settles crypto USDT as USD and still rejects equities and a stale crypto feed', async () => {
+    const crypto = await makeAccount('CRYPTO', 'USDT');
+    const equity = await makeAccount('EQUITIES', 'USD');
+    const stub = new TradingService(pool, {
+      calendar: new OpenEquityCalendar(),
+      fillsEnabled: true,
+    });
+    const fresh = quote({ receivedAt: new Date(), quoteUpdateId: '801' });
+    expect((await stub.submit(order(crypto, { quote: fresh }))).rejectReason).toBe(
+      'TEMPORARILY_UNAVAILABLE',
+    );
+    expect(
+      (
+        await stub.submit(
+          order(crypto, {
+            orderType: 'LIMIT',
+            limitPrice: '12.50',
+            quote: quote({ receivedAt: new Date(), quoteUpdateId: '802' }),
+          }),
+        )
+      ).rejectReason,
+    ).toBe('TEMPORARILY_UNAVAILABLE');
+    const phase2 = new Phase2Orders(pool, stub, null, true);
+    const placed = await phase2.placeStop({
+      accountId: crypto.accountId,
+      userId: crypto.userId,
+      instrumentId: crypto.instrumentId,
+      clientOrderId: randomUUID(),
+      idempotencyKey: randomUUID(),
+      quantity: '1.00000000',
+      triggerPrice: '10.00',
+      quote: fresh,
+    });
+    expect(placed.state).toBe('PENDING');
+    await phase2.onQuote(
+      crypto.instrumentId,
+      quote({ ask: '11.00', bid: '10.90', receivedAt: new Date(), quoteUpdateId: '803' }),
+    );
+    const triggered = await pool.query<{ reject_reason: string }>(
+      `SELECT reject_reason FROM orders
+        WHERE account_id = $1 AND client_order_id LIKE 'stop-%'`,
+      [crypto.accountId],
+    );
+    expect(triggered.rows.map((row) => row.reject_reason)).toEqual(['TEMPORARILY_UNAVAILABLE']);
+
+    const approved = new TradingService(pool, {
+      authorizer: new ApprovingRiskAuthorizer(),
+      fillsEnabled: true,
+    });
+    const other = await makeAccount('CRYPTO', 'USDT');
+    const filled = await approved.submit(
+      order(other, {
+        quantity: '2.00000000',
+        quote: quote({
+          bid: '12.40',
+          ask: '12.50',
+          receivedAt: new Date(),
+          quoteUpdateId: '804',
+        }),
+      }),
+    );
+    expect(filled).toMatchObject({
+      state: 'FILLED',
+      rejectReason: null,
+      filledQuantity: '2.00000000',
+      cash: '9974.8750',
+    });
+    const execution = await pool.query<{ price: string; notional: string; commission: string }>(
+      `SELECT price::text, notional::text, commission::text
+         FROM executions WHERE account_id = $1`,
+      [other.accountId],
+    );
+    expect(execution.rows[0]).toEqual({
+      price: '12.50000000',
+      notional: '25.0000',
+      commission: '0.1250',
+    });
+
+    expect((await approved.submit(order(equity))).rejectReason).toBe('CALENDAR_UNCOVERED');
+    expect(
+      (
+        await approved.submit(
+          order(other, {
+            quote: quote({ feedState: 'STALE', receivedAt: new Date(), quoteUpdateId: '805' }),
+          }),
+        )
+      ).rejectReason,
+    ).toBe('FEED_UNAVAILABLE');
+    expect(
+      (
+        await approved.submit(
+          order(other, {
+            quote: quote({
+              feedState: 'DISCONNECTED',
+              receivedAt: new Date(),
+              quoteUpdateId: '806',
+            }),
+          }),
+        )
+      ).rejectReason,
+    ).toBe('FEED_UNAVAILABLE');
+    expect(
+      (
+        await approved.submit(
+          order(other, {
+            quote: quote({
+              receivedAt: new Date(Date.now() - 6_000),
+              quoteUpdateId: '807',
+            }),
+          }),
+        )
+      ).rejectReason,
+    ).toBe('FEED_UNAVAILABLE');
+    const scope = await pool.query(
+      `SELECT 1 FROM commission_market_scopes
+        WHERE market = 'CRYPTO' AND decision_ref = 'D-CRYPTO-USDT-20261121'`,
+    );
+    expect(scope.rowCount).toBe(1);
   });
 
   it('keeps a resting remainder reserved after a partial limit fill', async () => {
