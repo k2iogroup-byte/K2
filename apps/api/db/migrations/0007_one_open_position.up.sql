@@ -12,10 +12,7 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  IF NEW.side <> 'BUY' OR NEW.state = 'REJECTED' OR NEW.filled_quantity < 0 THEN
-    RETURN NEW;
-  END IF;
-  IF NEW.state = 'REJECTED' THEN
+  IF NEW.side <> 'BUY' OR NEW.state = 'REJECTED' THEN
     RETURN NEW;
   END IF;
   IF EXISTS (
@@ -43,6 +40,6 @@ END;
 $$;
 
 CREATE TRIGGER orders_reject_position_increasing_buy
-  BEFORE INSERT OR UPDATE OF side, state, filled_quantity ON orders
+  BEFORE INSERT ON orders
   FOR EACH ROW
   EXECUTE FUNCTION k2_reject_position_increasing_buy();
