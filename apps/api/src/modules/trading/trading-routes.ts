@@ -7,6 +7,8 @@ import { parseWithSchema } from '../../infrastructure/http/validation.js';
 import type { AuthService } from '../auth/auth-service.js';
 import { PERMISSIONS, requirePermission, requireVerifiedEmail } from '../auth/rbac.js';
 import { noStore, requireRead, requireWrite, sendJson } from '../auth/request-context.js';
+import type { Phase2Orders } from './phase2-orders.js';
+import { orderActionAllowed } from './phase2-orders.js';
 import type { ExecutableQuote, TradingService } from './trading-service.js';
 import { TradingConflictError, TradingNotFoundError } from './trading-service.js';
 
@@ -15,7 +17,7 @@ const orderBodySchema = z.strictObject({
   instrumentId: z.uuid(),
   clientOrderId: z.string().min(1).max(64),
   side: z.enum(['BUY', 'SELL']),
-  orderType: z.enum(['MARKET', 'LIMIT']),
+  orderType: z.enum(['MARKET', 'LIMIT', 'STOP']),
   quantity: z.string().min(1).max(32),
   limitPrice: z.string().min(1).max(32).nullable(),
 });
@@ -59,10 +61,13 @@ const positionListSchema = z.strictObject({
   ),
 });
 
+const idParamsSchema = z.strictObject({ id: z.uuid() });
+
 export function registerTradingRoutes(
   app: FastifyInstance,
   auth: AuthService,
   trading: TradingService,
+  phase2: Phase2Orders,
   pool: Pool,
 ): void {
   app.post('/trading/orders', async (request, reply) => {
@@ -72,7 +77,60 @@ export function registerTradingRoutes(
     requirePermission(session, PERMISSIONS.tradingExecute);
     const key = idempotencyKey(request.headers['idempotency-key']);
     const body = parseWithSchema(orderBodySchema, request.body);
+    if (!orderActionAllowed(body.side, body.orderType)) {
+      throw new AppError('VALIDATION_ERROR', 400, 'This side and order type are not allowed');
+    }
     const quote = await loadQuote(pool, body.instrumentId);
+    if (body.orderType === 'STOP') {
+      if (!body.limitPrice) {
+        throw new AppError('VALIDATION_ERROR', 400, 'A stop order needs a trigger price');
+      }
+      try {
+        const placed = await phase2.placeStop({
+          accountId: body.accountId,
+          userId: session.userId,
+          instrumentId: body.instrumentId,
+          clientOrderId: body.clientOrderId,
+          idempotencyKey: key,
+          quantity: body.quantity,
+          triggerPrice: body.limitPrice,
+          quote,
+        });
+        if (quote) await phase2.onQuote(body.instrumentId, quote);
+        const viewed = placed.orderId
+          ? await phase2.readOrder(session.userId, placed.orderId)
+          : null;
+        return await sendJson(reply, 200, orderResponseSchema, {
+          ...(viewed ?? placed),
+          executionVenue: 'K2_SIMULATION',
+          liveMarketData: false,
+        });
+      } catch (error) {
+        if (error instanceof TradingNotFoundError) {
+          throw new AppError('NOT_FOUND', 404, 'Trading account not found');
+        }
+        if (error instanceof TradingConflictError) {
+          throw new AppError('CONFLICT', 409, error.message);
+        }
+        throw error;
+      }
+    }
+    if (quote) await phase2.onQuote(body.instrumentId, quote);
+    if (
+      body.side === 'BUY' &&
+      (await phase2.nativeBuyBlocked(body.accountId, session.userId, body.instrumentId))
+    ) {
+      return await sendJson(reply, 200, orderResponseSchema, {
+        orderId: null,
+        state: 'REJECTED',
+        rejectReason: 'POSITION_ALREADY_OPEN',
+        filledQuantity: '0.00000000',
+        cash: null,
+        executionId: null,
+        executionVenue: 'K2_SIMULATION',
+        liveMarketData: false,
+      });
+    }
     try {
       const result = await trading.submit({
         accountId: body.accountId,
@@ -100,6 +158,21 @@ export function registerTradingRoutes(
       }
       throw error;
     }
+  });
+
+  app.get('/trading/orders/:id', async (request, reply) => {
+    noStore(reply);
+    const session = await requireRead(auth, request);
+    requireVerifiedEmail(session);
+    requirePermission(session, PERMISSIONS.tradingRead);
+    const params = parseWithSchema(idParamsSchema, request.params);
+    const order = await phase2.readOrder(session.userId, params.id);
+    if (!order) throw new AppError('NOT_FOUND', 404, 'Order not found');
+    return sendJson(reply, 200, orderResponseSchema, {
+      ...order,
+      executionVenue: 'K2_SIMULATION',
+      liveMarketData: false,
+    });
   });
 
   app.get('/trading/orders', async (request, reply) => {
