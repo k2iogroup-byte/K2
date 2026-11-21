@@ -81,7 +81,7 @@
 | ID | Question | Why it matters | Proposed resolution (PROPOSED) | Priority |
 |---|---|---|---|---|
 | OQ-070 | **React confirmation.** React is a candidate, not confirmed. | Frontend hiring, charting library choice, PWA tooling. | Adopt React with a mature framework; founder to confirm. | P0 |
-| OQ-071 | **Railway vs Vercel.** | Persistent WebSockets and stateful engines need long-running processes; serverless functions are a poor fit for those parts. | DECIDED 2026-11-13 (D-077): Vercel frontend, Railway backend, independent deploys. Domain, paid plans, database region, and backups remain open in DEPLOYMENT_ARCHITECTURE.md. | Closed for the platform choice |
+| OQ-071 | **Railway vs Vercel.** | Persistent WebSockets and stateful engines need long-running processes; serverless functions are a poor fit for those parts. | DECIDED 2026-11-13 (D-077): Vercel frontend, Railway backend, independent deploys. Region decided 2026-11-21 (D-078). Domain, paid plans, and backups remain open in DEPLOYMENT_ARCHITECTURE.md. | Closed for the platform choice and the region |
 | OQ-072 | **Broker selection** for equities Real Accounts. | Determines execution API, account structure, fees (must not be assumed — D-033), reconciliation, jurisdictions. | Shortlist brokers offering institutional API access and sub-account structures; legal review of agreement. | P2 (P0 for Real phase) |
 | OQ-073 | **US equities market-data licensing.** Display vs non-display use, per-user exchange fees, professional/non-professional classification, redistribution rights. | Fees may scale per user and can be material; unlicensed redistribution is a contractual and regulatory breach. | Engage vendors and counsel before selection. REQUIRES LEGAL REVIEW. | P0 if equities in MVP |
 | OQ-074 | FX and secondary crypto data sources; Binance terms for redistribution and geographic restrictions. | Single-source dependency; terms compliance. | Evaluate at least two sources per market. REQUIRES LEGAL REVIEW. | P0 for chosen MVP market |
@@ -96,7 +96,7 @@
 | OQ-081 | Legal structure of "company-funded Real Accounts": is the trader an employee, contractor, or account manager? Who holds the brokerage account? | Determines licensing, tax, and broker onboarding. REQUIRES LEGAL REVIEW. | P2 (P0 for Real phase) |
 | OQ-082 | Operating entity, jurisdiction, tax treatment of payouts, and restricted countries list. | Payments, KYC, and terms. REQUIRES LEGAL REVIEW. | P0 |
 | OQ-083 | Terms of Service, Rulebook, risk disclosures, and marketing language (no implication of guaranteed payouts or real-money trading in simulation). | Consumer protection. REQUIRES LEGAL REVIEW. | P0 |
-| OQ-084 | Data protection regime and record-retention periods. | Schema and backup design. REQUIRES LEGAL REVIEW. | P1 |
+| OQ-084 | Data protection regime and record-retention periods. The Railway region is decided: EU West, Amsterdam (`europe-west4`), data residency EU / Netherlands (D-078, 2026-11-21). | Schema and backup design. The regime and the retention periods still REQUIRE LEGAL REVIEW. | P1 for the remaining legal questions. Closed for the region |
 
 ---
 

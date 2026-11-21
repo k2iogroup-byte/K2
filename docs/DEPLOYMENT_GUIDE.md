@@ -8,11 +8,11 @@ Production deployment is out of scope. The workflow in `.github/workflows/ci.yml
 
 ## What is committed
 
-| File                       | Role                                                                                                      |
-| -------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `apps/web/vercel.json`     | Install and build the npm workspace from the repository root when the Vercel root directory is `apps/web` |
-| `.railway/railway.ts`      | Staging API service, Postgres, build, pre-deploy migration, `/health`                                     |
-| `.github/workflows/ci.yml` | Checks only                                                                                               |
+| File                       | Role                                                                                                                       |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web/vercel.json`     | Install and build the npm workspace from the repository root when the Vercel root directory is `apps/web`                  |
+| `.railway/railway.ts`      | Staging API service and Postgres, both in `europe-west4` with one replica, plus build, pre-deploy migration, and `/health` |
+| `.github/workflows/ci.yml` | Checks only                                                                                                                |
 
 `railway.toml` is not used. Railway’s config-as-code file is deprecated for new services. The current file is `.railway/railway.ts`, evaluated by the Railway CLI. It is not read automatically on git push. Nothing deploys until an owner runs `railway config plan` and then `railway config apply`.
 
@@ -55,7 +55,9 @@ Market-data licences, a broker, and a payment processor are not staging costs fo
    railway config apply
    ```
 
-   Read the plan. It should add Postgres (`postgres`) and the API service (`api`) only. Do not confirm a plan that deletes unrelated resources or mentions production.
+   Read the plan. It should add Postgres (`postgres`) and the API service (`api`) only, each with `deploy.multiRegionConfig['europe-west4'].numReplicas` equal to `1` and no other region. Do not confirm a plan that deletes unrelated resources, adds a second replica, or mentions production.
+
+   The founder region is Railway EU West, Amsterdam (`europe-west4`), because Binance blocks US IP addresses (D-078, 2026-11-21). Data residency is the EU / Netherlands. Railway's EU West Metal region (`europe-west4-drams3a`) is preferred. At the first deploy, smoke-test Binance from the region that actually runs. HTTP 451 or 403 means Binance is blocked from that region. Recording the region in this file does not apply it.
 
 7. The API build command is `npm run build -w @k2/shared && npm run build -w @k2/api`. The pre-deploy command is `npm run db:migrate -w @k2/api`. The start command is `npm run start -w @k2/api`. Health check path: `/health`, timeout 120 seconds.
 8. Private `DATABASE_URL` is wired from the Postgres service. `DATABASE_SSL=disable` matches that private host. Do not replace it with the public proxy URL unless you also set `DATABASE_SSL` to `no-verify` or `verify`.

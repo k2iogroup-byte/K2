@@ -1,6 +1,6 @@
 # K2 Group — Deployment architecture
 
-> **Status:** The platform split below is a **CONFIRMED** founder decision (2026-11-13, [DECISIONS_LOG.md](./DECISIONS_LOG.md) D-077). Domain, DNS, paid plans, database region, and backup retention are **PROPOSED** and are not approved. No Vercel project, Railway project, database, domain, or deployment was created or modified for this document. GitHub Actions has no deploy job. `.railway/railway.ts` is not applied by CI.
+> **Status:** The platform split below is a **CONFIRMED** founder decision (2026-11-13, [DECISIONS_LOG.md](./DECISIONS_LOG.md) D-077). The Railway region is a **CONFIRMED** founder decision (2026-11-21, D-078): EU West, Amsterdam (`europe-west4`), data residency EU / Netherlands. Domain, DNS, paid plans, and backup retention are **PROPOSED** and are not approved. This document does not create or modify a Vercel project, a Railway project, a database, a domain, or a deployment. GitHub Actions has no deploy job. `.railway/railway.ts` is not applied by CI. On 2026-11-21 the live project `overflowing-charm` had services `@k2/api` and `@k2/web` and no production service instances or deployments, so nothing running had to be moved.
 
 This file is the hosting map for the repository as it exists. It does not rewrite the modules. Where the current code cannot meet a requirement, the gap is recorded with a recommended fix and a status.
 
@@ -219,7 +219,7 @@ CSRF and origin:
 
 `/ws` does not accept a session. It is a ping route. It uses the same Origin rule as `/ws/market-data`.
 
-Connection admission, the per-socket message window, and the cap on messages queued before market-data authentication are in-process. They hold for one API process only. The current architecture is one replica (D-077, and `numReplicas` in `.railway/railway.ts`). They are not shared through Redis, and they are not a substitute for the PostgreSQL authentication rate limits. One replica is the current deployment, so the in-process caps and the PostgreSQL limits see the same clients until a second replica exists.
+Connection admission, the per-socket message window, and the cap on messages queued before market-data authentication are in-process. They hold for one API process only. The current architecture is one replica in one region (D-077, D-078, and `replicas: { 'europe-west4': 1 }` in `.railway/railway.ts`). They are not shared through Redis, and they are not a substitute for the PostgreSQL authentication rate limits. One replica is the current deployment, so the in-process caps and the PostgreSQL limits see the same clients until a second replica exists.
 
 Abuse caps for that one process, not a capacity measurement: 500 sockets, 20 per normalized client IP, 4 market-data messages queued before authentication completes, 30 messages per 10 seconds per socket, a 4096-byte payload, a 5 second authentication timeout, and the existing 1 MiB slow-consumer close. A socket that exceeds a cap is closed. A throwing consumer does not stop delivery to the others. Authentication database failures close the socket with 1011 and do not leave the authentication promise unhandled. Messages received before authentication are limited to the queue cap and are discarded if authentication fails.
 
@@ -250,7 +250,7 @@ Expired `rate_limit_buckets` rows, and `rate_limit_failures` rows older than the
 
 First staging check, after an owner deploys: sign in and read the IP on the authentication audit row. It should be the client address, not a Railway proxy address. If it is a private proxy address, the hop count does not match the real chain. Stop and set a CIDR, or the correct hop count, before relying on rate limits.
 
-`numReplicas` stays `1` because the market-data engine is in-process, not because the rate limit is in-memory. The Postgres limiter is already shared. Extra API replicas would still duplicate the provider connection and split the fan-out.
+The API replica count stays `1`, in `europe-west4` only, because the market-data engine is in-process and the trading singleton lock assumes exactly one process. The Postgres limiter is already shared. Extra API replicas would still duplicate the provider connection and split the fan-out.
 
 ### 5.4 Requirement 7, no forced monolith
 
@@ -379,12 +379,13 @@ Invalid configuration exits before listen. The stderr JSON lists `{ path, messag
 
 ### 6.3 PostgreSQL placement and backups
 
-**PROPOSED. Region and retention need founder approval. The database is not created.**
+**Region CONFIRMED (D-078). Backup retention is still PROPOSED. The database is not created by this file.**
 
 Placement:
 
 - One Postgres service in the same Railway project and environment as the API, on Railway's private network.
-- Region is a founder decision (data residency, OQ-084). Do not assume a region in the config file. `.railway/railway.ts` does not set one.
+- Region is EU West, Amsterdam (`europe-west4`). Data residency is the EU / Netherlands (D-078, the region part of OQ-084). `.railway/railway.ts` sets it on the API with `replicas: { 'europe-west4': 1 }` and on Postgres with `postgres('postgres', { region: 'europe-west4' })`. Both compile to `deploy.multiRegionConfig['europe-west4'].numReplicas = 1`. That is one replica in one region. The trading singleton lock depends on that.
+- Railway's EU West Metal region (`europe-west4-drams3a`) is preferred. The committed identifier is the founder's `europe-west4`. The first deploy must smoke-test Binance from the region that actually runs. HTTP 451 or 403 means that region is blocked. Binance blocks US IP addresses, which is why the region is not in the US.
 - The API uses the private URL. The public TCP proxy stays off unless an operator needs a one-off `psql` session, and that URL must not be committed.
 - Staging and production are separate Railway environments and separate databases. Production data is not copied into staging. Preview has no database of its own and must not be given the production URL.
 - Trial volume limit is 500 MB. Hobby's listed volume limit is 5 GB. A real market-data bar history can outgrow a trial disk. See Module 04's retention note before loading a large symbol set.
@@ -419,7 +420,7 @@ A credible test, later, needs a recorded market replay, a realistic mix of idle 
 This sequence is not executed by this change.
 
 1. Buy Vercel Pro or Enterprise, and a Railway plan that can hold a custom domain and backups. Do not use Vercel Hobby.
-2. Choose the domain, region, and backup retention.
+2. Choose the domain and the backup retention. The region is already `europe-west4` (D-078). Do not apply this file to production. `railway config plan` must show one API replica and one Postgres replica, both in `europe-west4` and nowhere else.
 3. Create the Vercel project and the Railway `staging` environment. Set the variables in the matrix. Run `railway config plan`, read it, then `railway config apply`. Refuse a plan that mentions production or deletes a database.
 4. Attach `app.staging.<domain>` and `api.staging.<domain>`. Confirm `/health`, a sign-in through `/k2-api`, the audit IP, and that a WebSocket to the Railway host receives the session cookie only after `COOKIE_DOMAIN` exists.
 5. Leave production uncreated until staging has had a restore drill and the cookie domain is implemented.
@@ -428,13 +429,14 @@ The staging preparation steps in [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) st
 
 ## 9. Founder decisions still required
 
+The Railway region is not in this list. It is D-078: `europe-west4`, data residency EU / Netherlands. Railway's EU West Metal region (`europe-west4-drams3a`) is preferred, and the first deploy smoke-tests Binance from the region that runs.
+
 | Decision                                    | Why it blocks                                                                                                     |
 | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Registrable domain and DNS host             | Cookie `Domain`, `app` / `api` hostnames, and preview policy                                                      |
 | Staging hostnames                           | Same cookie site as production or a staging-only parent domain                                                    |
 | Vercel plan (Pro or Enterprise)             | Hobby forbids commercial use                                                                                      |
 | Railway plan and spend cap                  | Trial data is deleted; Free has no custom domain; backups are assumed to need Pro                                 |
-| PostgreSQL region                           | Data residency (OQ-084)                                                                                           |
 | Backup retention and the off-platform dump  | The schedule above is a proposal                                                                                  |
 | Whether preview web may use the staging API | Recommended yes for HTTP, never production. Authenticated preview sockets stay broken until the domain work lands |
 | SMTP vendor                                 | Not required to boot. `unconfigured` is the staging placeholder                                                   |

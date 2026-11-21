@@ -1,6 +1,6 @@
 # K2 Group — Technical Architecture (PROPOSED)
 
-> **Status of this entire document: PROPOSED**, except the hosting split recorded in section 12, which the founder confirmed on 2026-11-13. Founder constraints from the brief are marked **CONFIRMED**; everything else is a recommendation pending decision. Domain, paid plans, database region, and backups remain PROPOSED. No hosted project was created.
+> **Status of this entire document: PROPOSED**, except the hosting split recorded in section 12, which the founder confirmed on 2026-11-13, and the Railway region confirmed on 2026-11-21 (D-078): EU West, Amsterdam (`europe-west4`), data residency EU / Netherlands. Founder constraints from the brief are marked **CONFIRMED**; everything else is a recommendation pending decision. Domain, paid plans, and backups remain PROPOSED. No hosted project was created by this document.
 
 ---
 
@@ -12,7 +12,7 @@
 | TC-02 | No native mobile app or Electron desktop app for MVP. | CONFIRMED |
 | TC-03 | Professional dark institutional interface. | CONFIRMED |
 | TC-04 | React-based frontend is a **candidate**, not a confirmed final choice. | UNRESOLVED (OQ-070) |
-| TC-05 | Backend, database, hosting, and deployment architecture must be evaluated. | Hosting split CONFIRMED (D-077). Region, plans, and backups remain PROPOSED |
+| TC-05 | Backend, database, hosting, and deployment architecture must be evaluated. | Hosting split CONFIRMED (D-077). Region CONFIRMED (D-078). Plans and backups remain PROPOSED |
 | TC-06 | Railway and Vercel are **candidate** hosting platforms. | CONFIRMED split (D-077): Vercel frontend, Railway backend. OQ-071 closed for the platform choice |
 | TC-07 | GitHub is the source-control system. | CONFIRMED |
 | TC-08 | Real market data is required for actual charts. | CONFIRMED |
@@ -171,7 +171,7 @@ These figures are **planning hypotheses**, not commitments.
 
 ## 10. Architecture Decisions Requiring Founder Input
 
-See [DECISIONS_LOG.md](./DECISIONS_LOG.md) (pending proposals P-xxx) and [OPEN_QUESTIONS.md](./OPEN_QUESTIONS.md): OQ-070 (React), OQ-072 (broker), OQ-073 (US equities data licensing), OQ-074 (FX data source), OQ-075 (payment processor), OQ-076 (KYC vendor). OQ-071 (Railway vs Vercel) is closed by D-077. Domain, plan purchase, database region, and backup retention remain open in [DEPLOYMENT_ARCHITECTURE.md](./DEPLOYMENT_ARCHITECTURE.md).
+See [DECISIONS_LOG.md](./DECISIONS_LOG.md) (pending proposals P-xxx) and [OPEN_QUESTIONS.md](./OPEN_QUESTIONS.md): OQ-070 (React), OQ-072 (broker), OQ-073 (US equities data licensing), OQ-074 (FX data source), OQ-075 (payment processor), OQ-076 (KYC vendor). OQ-071 (Railway vs Vercel) is closed by D-077. The Railway region is D-078. Domain, plan purchase, and backup retention remain open in [DEPLOYMENT_ARCHITECTURE.md](./DEPLOYMENT_ARCHITECTURE.md).
 
 ## 11. Module 01 implementation note (2026-11-13)
 

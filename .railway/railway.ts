@@ -13,7 +13,8 @@ export default defineRailway((ctx) => {
     );
   }
 
-  const database = postgres('postgres');
+  // region compiles to deploy.multiRegionConfig['europe-west4'].numReplicas = 1.
+  const database = postgres('postgres', { region: 'europe-west4' });
   const source = github('k2iogroup-byte/K2', {
     branch: 'main',
     checkSuites: true,
@@ -26,11 +27,13 @@ export default defineRailway((ctx) => {
     start: 'npm run start -w @k2/api',
     healthcheck: '/health',
     healthcheckTimeout: 120,
+    // One replica in one region. Compiles to the same multiRegionConfig field
+    // as the database. No unscoped numReplicas, so a second region is not declared.
+    replicas: { 'europe-west4': 1 },
     deploy: {
       preDeployTimeoutSeconds: 120,
       restartPolicyType: 'ON_FAILURE',
       restartPolicyMaxRetries: 5,
-      numReplicas: 1,
     },
     env: {
       APP_ENV: 'staging',
