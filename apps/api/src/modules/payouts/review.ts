@@ -17,7 +17,8 @@ export async function approvePayout(
   adminUserId: string,
 ): Promise<{ accountId: string; amount: string }> {
   await assertPayoutAdmin(pool, adminUserId);
-  if ((await latestStatus(pool, requestId)) !== 'UNDER_REVIEW') throw new PayoutRejected('NOT_UNDER_REVIEW');
+  if ((await latestStatus(pool, requestId)) !== 'UNDER_REVIEW')
+    throw new PayoutRejected('NOT_UNDER_REVIEW');
   const request = await pool.query<{
     account_id: string;
     trader_amount: string;
@@ -47,7 +48,13 @@ export async function approvePayout(
     await insertSupplement(client, row.account_id, requestId, 'PAYOUT_TRADER', row.trader_amount);
     await insertSupplement(client, row.account_id, requestId, 'PAYOUT_COMPANY', row.company_amount);
     if (row.reserve_amount !== '0.0000') {
-      await insertSupplement(client, row.account_id, requestId, 'PAYOUT_RESERVE', row.reserve_amount);
+      await insertSupplement(
+        client,
+        row.account_id,
+        requestId,
+        'PAYOUT_RESERVE',
+        row.reserve_amount,
+      );
     }
     await client.query(
       `INSERT INTO sandbox_payouts (payout_request_id, account_id, amount, currency, provider, actor_type)
@@ -82,7 +89,8 @@ export async function rejectPayout(
 ): Promise<void> {
   await assertPayoutAdmin(pool, adminUserId);
   if (reason.trim() === '') throw new PayoutRejected('REASON_REQUIRED');
-  if ((await latestStatus(pool, requestId)) !== 'UNDER_REVIEW') throw new PayoutRejected('NOT_UNDER_REVIEW');
+  if ((await latestStatus(pool, requestId)) !== 'UNDER_REVIEW')
+    throw new PayoutRejected('NOT_UNDER_REVIEW');
   const review = await pool.query<{ id: string }>(
     `SELECT id FROM human_review_cases WHERE subject_type = 'PAYOUT' AND subject_id = $1`,
     [requestId],

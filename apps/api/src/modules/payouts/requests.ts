@@ -26,7 +26,12 @@ export async function requestPayout(
   );
   if ((open.rowCount ?? 0) > 0) throw new PayoutRejected('ALREADY_OPEN');
   const decision = await isEligible(pool, accountId, now);
-  if (!decision.eligible || !decision.grossProfit || !decision.traderAmount || !decision.companyAmount) {
+  if (
+    !decision.eligible ||
+    !decision.grossProfit ||
+    !decision.traderAmount ||
+    !decision.companyAmount
+  ) {
     throw new PayoutRejected(decision.reason ?? 'NOT_ELIGIBLE');
   }
   const reserve = decision.reserveAmount ?? '0.0000';
@@ -101,7 +106,12 @@ export async function latestStatus(pool: Pool, requestId: string): Promise<strin
 export async function payoutDashboard(pool: Pool, accountId: string, now = new Date()) {
   const decision = await isEligible(pool, accountId, now);
   const next = await nextPayoutDate(pool, accountId, now);
-  const history = await pool.query<{ id: string; status: string; trader_amount: string; created_at: Date }>(
+  const history = await pool.query<{
+    id: string;
+    status: string;
+    trader_amount: string;
+    created_at: Date;
+  }>(
     `SELECT requests.id, latest.status, requests.trader_amount::text, requests.created_at
      FROM payout_requests AS requests
      JOIN LATERAL (

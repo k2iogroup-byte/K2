@@ -30,7 +30,11 @@ type Gate = {
   lastPaidAt: Date | null;
 };
 
-export async function isEligible(pool: Pool, accountId: string, now = new Date()): Promise<Eligibility> {
+export async function isEligible(
+  pool: Pool,
+  accountId: string,
+  now = new Date(),
+): Promise<Eligibility> {
   const gate = await loadGate(pool, accountId);
   if (!gate) return blocked('ACCOUNT_NOT_FOUND');
   if (!gate.activatedAt) return blocked('NOT_FUNDED');
@@ -97,7 +101,11 @@ export async function isEligible(pool: Pool, accountId: string, now = new Date()
   };
 }
 
-export async function nextPayoutDate(pool: Pool, accountId: string, now = new Date()): Promise<string | null> {
+export async function nextPayoutDate(
+  pool: Pool,
+  accountId: string,
+  now = new Date(),
+): Promise<string | null> {
   const gate = await loadGate(pool, accountId);
   if (!gate?.activatedAt) return null;
   const windowStart = gate.lastPaidAt ?? gate.activatedAt;
