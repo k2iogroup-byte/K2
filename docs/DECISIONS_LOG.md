@@ -162,6 +162,21 @@ These are fail-closed defaults. They use no founder-chosen number. Each can be r
 | Subscription versus equity | Unchanged and already required: a subscription row does not change the cash sum or equity. |
 | Payments grace | Not implemented in Module 07. Module 08 writes an append-only human review when grace ends. There is no production day count. Unset configuration does not invent 3 or 7 days: the review row is written immediately. The account is not set to `FAILED` or `PAUSED`. |
 
+## Provisional — Modules 09 and 10, awaiting founder (2026-11-27)
+
+These are fail-closed defaults. They use no newly invented business number. Each can be reversed later.
+
+| Topic | Provisional choice |
+|---|---|
+| Funded source | Eligibility reads `funded_activations`. Nothing in Modules 06–09 inserts that row in production. No Stage 2 or Funded account is created. |
+| $50 minimum | Applied to the trader's 70 percent, not to gross profit. |
+| Later payout window | 15 calendar days from the last `PAID` payout, still with 7 trading days in that window. |
+| Cash after payout | Posted cash and the simulation projection stay as they are. The split is stored in `journal_supplements` with no cash effect. Reducing the balance would need a journal type migration 0014 cannot add without an alter, or an edit to Module 05 state. |
+| Review subject check | `human_review_items` stays payment-only. Payout and KYC use the new `human_review_cases` table. Payment grace writes both. |
+| Super admin | Module 02's `ADMIN` role is required. The stored actor is `SUPER_ADMIN`. No role was added. |
+| KYC gate | Every payout request requires `VERIFIED`. The "first payout only" reading is not assumed. |
+| KYC before payout | Implemented as specified and still awaiting confirmation that KYC is required before a payout. |
+
 ## Part D — Change Procedure (PROPOSED)
 
 1. Change request references the affected BR/D/P/OQ IDs.

@@ -17,7 +17,7 @@
 | M-06 | Risk Management | MVP | IMPLEMENTED for Challenge simulation on 2026-11-27. See [MODULE_06_RISK.md](./MODULE_06_RISK.md). |
 | M-07 | Financial Ledger | MVP | IMPLEMENTED for the simulation journal on 2026-11-27. See [MODULE_07_LEDGER.md](./MODULE_07_LEDGER.md). |
 | M-08 | Payments and Subscriptions | MVP | IMPLEMENTED as a sandbox on 2026-11-27. See [MODULE_08_PAYMENTS.md](./MODULE_08_PAYMENTS.md). |
-| M-09 | Payouts | MVP | PROPOSED |
+| M-09 | Payouts | MVP | Sandbox contract 2026-11-27. See [MODULE_09_PAYOUTS.md](./MODULE_09_PAYOUTS.md). |
 | M-10 | KYC and Anti-Fraud | MVP (before first payout) | PROPOSED |
 | M-11 | Trader Dashboard and Terminal | MVP | PROPOSED |
 | M-12 | Admin Control System | MVP | PROPOSED |
@@ -83,6 +83,7 @@
 ### M-09 Payouts
 - **Scope:** eligibility engine (21 days/7 trading days first; 15 days/7 trading days subsequent; $50 minimum — CONFIRMED), request queue, trade-history review, execution, reconciliation.
 - **Depends on:** M-06, M-07, M-10, M-12.
+- **Status (2026-11-27):** contract. See [MODULE_09_PAYOUTS.md](./MODULE_09_PAYOUTS.md). No Funded account is created. Approval pays the sandbox only. Several readings are provisional in the decisions log.
 - **Blocking questions:** OQ-031 (Funded Simulation split), OQ-033, OQ-034 (payout rails).
 
 ### M-10 KYC and Anti-Fraud
