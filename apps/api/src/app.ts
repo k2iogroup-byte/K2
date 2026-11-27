@@ -17,6 +17,7 @@ import { registerAuthRoutes } from './modules/auth/auth-routes.js';
 import { createEmailSender, type EmailSender } from './modules/auth/email.js';
 import type { RateLimiter } from './modules/auth/rate-limit.js';
 import { registerHealthRoutes } from './modules/health/health-route.js';
+import { registerKycRoutes } from './modules/kyc/kyc-routes.js';
 import { runLedgerMaintenance } from './modules/ledger/cycle.js';
 import {
   nodeWebSocketConnector,
@@ -147,6 +148,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     );
     registerTradingRoutes(app, auth, trading, phase2, options.pool, fanout);
     registerPayoutRoutes(app, auth, options.pool);
+    registerKycRoutes(app, auth, options.pool);
     bindTradingQuotes(engine, phase2);
     if (options.tradingLock?.fillsAllowed()) await phase2.evaluateSnapshots();
     const stagePool = options.pool;

@@ -18,7 +18,7 @@
 >
 > **Module 09 (implemented, sandbox):** payout eligibility, an append-only request, and a sandbox disbursement. No Funded account is created. The contract is [MODULE_09_PAYOUTS.md](./MODULE_09_PAYOUTS.md).
 >
-> **Module 10 (contract):** sandbox KYC status only. Document contents are not stored. `KYC_PROVIDER=live` does not start. The contract is [MODULE_10_KYC.md](./MODULE_10_KYC.md).
+> **Module 10 (implemented, sandbox):** sandbox KYC status only. Document contents are not stored. `KYC_PROVIDER=live` does not start. The contract is [MODULE_10_KYC.md](./MODULE_10_KYC.md).
 
 ---
 

@@ -7,6 +7,7 @@ export type DatabaseSslMode = 'disable' | 'no-verify' | 'verify';
 export type EmailDeliveryMode = 'capture' | 'unconfigured' | 'smtp';
 export type MarketDataMode = 'disconnected' | 'test-fixture' | 'binance-public';
 export type PaymentProviderMode = 'sandbox';
+export type KycProviderMode = 'sandbox';
 
 /** `true` is intentionally absent. A hop count is not "trust every forwarded header". */
 export type TrustProxySetting =
@@ -49,6 +50,7 @@ export type AppConfig = {
   trustProxy: TrustProxySetting;
   executionFillsEnabled: boolean;
   paymentProvider: PaymentProviderMode;
+  kycProvider: KycProviderMode;
 };
 
 /** 32 bytes of 0x01. Development only. Rejected in staging and production. */
@@ -139,6 +141,7 @@ export function loadConfig(env: Env): AppConfig {
   const trustProxy = readTrustProxy(env.TRUST_PROXY, issues);
   const executionFillsEnabled = readExecutionFills(env.EXECUTION_ENABLED, appEnv, issues);
   const paymentProvider = readPaymentProvider(env.PAYMENT_PROVIDER, issues);
+  const kycProvider = readKycProvider(env.KYC_PROVIDER, issues);
 
   if (appEnv && database && databaseSsl) {
     checkDatabasePolicy(appEnv, database.url, databaseSsl, issues);
@@ -163,7 +166,8 @@ export function loadConfig(env: Env): AppConfig {
     !marketDataMode ||
     !trustProxy ||
     executionFillsEnabled === null ||
-    !paymentProvider
+    !paymentProvider ||
+    !kycProvider
   ) {
     throw new ConfigError(issues.length > 0 ? issues : [{ path: 'config', message: 'is invalid' }]);
   }
@@ -190,6 +194,7 @@ export function loadConfig(env: Env): AppConfig {
     trustProxy,
     executionFillsEnabled,
     paymentProvider,
+    kycProvider,
   };
 }
 
@@ -208,6 +213,25 @@ function readPaymentProvider(
   if (value !== 'sandbox') {
     issues.push({
       path: 'PAYMENT_PROVIDER',
+      message: 'must be sandbox or live',
+    });
+    return null;
+  }
+  return 'sandbox';
+}
+
+function readKycProvider(raw: string | undefined, issues: ConfigIssue[]): KycProviderMode | null {
+  const value = raw === undefined || raw.trim() === '' ? 'sandbox' : raw.trim();
+  if (value === 'live') {
+    issues.push({
+      path: 'KYC_PROVIDER',
+      message: 'live KYC has no provider and cannot start',
+    });
+    return null;
+  }
+  if (value !== 'sandbox') {
+    issues.push({
+      path: 'KYC_PROVIDER',
       message: 'must be sandbox or live',
     });
     return null;

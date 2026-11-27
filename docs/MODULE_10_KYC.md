@@ -1,6 +1,6 @@
 # Module 10 — KYC
 
-**Status:** Contract 2026-11-27. No real KYC vendor. The sandbox stores a provider document id and a status. It does not store document contents. Anti-fraud, sanctions, and device checks are not in this module.
+**Status:** Implemented 2026-11-27 as a sandbox. No real KYC vendor. The sandbox stores a provider document id and a status. It does not store document contents. Anti-fraud, sanctions, and device checks are not in this module.
 
 ## Lifecycle
 
