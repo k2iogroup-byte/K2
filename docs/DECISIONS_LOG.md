@@ -135,7 +135,20 @@ Recorded 2026-11-27. Approved decisions A–N are unchanged. This is status, not
 | Commission | 0.5 percent on the crypto opening buy. Close stays zero. |
 | Scaling in | Still rejected (`POSITION_ALREADY_OPEN`). |
 | Production fills | Remain off. `EXECUTION_ENABLED` is allowed only when `APP_ENV=development`. |
-| Live execution | Waits for M-06. The server risk authorizer still rejects buys. No broker and no real-money path was added. |
+| Live execution | The M-06 engine is implemented for the simulation. The server process still uses the fail-closed authorizer, so a buy is still rejected until that process is switched. No broker and no real-money path was added. |
+
+## Module 06 founder decisions — 2026-11-27
+
+These decisions are from the founder on 2026-11-27. They apply to Challenge and Funded Simulation evaluation. Real Account daily-loss value (D-051, OQ-040) stays unresolved. Approved decisions A–N are otherwise unchanged.
+
+| Topic | Decision |
+|---|---|
+| Daily loss floor | 0.95 times the highest equity of the UTC day. Equity is cash plus open longs marked at the bid. A new `EQUITY_HIGH` row is inserted only when equity sets a strict new high. The day-open mark is the first evaluation after 00:00 UTC. It does not wait for a timer. There is no tick filter: equity is money at scale 4, and a tick filter would drop a real high on a small position. |
+| Max drawdown | Unchanged. 0.92 times the initial balance. The floor does not rise. |
+| Breach | Equity less than or equal to either floor. The account becomes `FAILED`. Free quantity is sold with a risk-reducing market order. A closed equity calendar and a stale feed do not block that sell. One account gets one breach row, so two quotes cannot sell the same quantity twice. |
+| Pending buys | Every working buy is treated as filled before a new buy is allowed. A limit uses its limit price. A market buy uses the ask. An entry-stop buy uses the higher of the stop and the ask. Pending sells, closes, stop-losses, and take-profits are not counted. The account row lock serializes concurrent buys. |
+| Stage result | Stage 1 target is 8 percent and Stage 2 is 5 percent, both on closed balance, with at least 7 trading days and no open position. Stage 1 allows 30 calendar days from the first execution and Stage 2 allows 60. A pass writes `PASSED` and one `risk_stage_outcomes` row. It does not open a Stage 2 or Funded account. A timeout without the target is `FAILED` and force-closes like a breach. |
+| Schema | No change to `trading_accounts` or `purchase_evidence`. Risk rows are append-only in migration `0013`. |
 
 ## Part D — Change Procedure (PROPOSED)
 

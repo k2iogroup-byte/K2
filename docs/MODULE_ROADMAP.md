@@ -14,7 +14,7 @@
 | M-03 | Challenge and Account Management | MVP | PROPOSED |
 | M-04 | Market Data Infrastructure | MVP | PROPOSED (real data CONFIRMED required) |
 | M-05 | Trading Engine (simulation execution; broker adapter later) | MVP (simulation) / Phase 3 (broker) | PROPOSED |
-| M-06 | Risk Management | MVP | PROPOSED |
+| M-06 | Risk Management | MVP | IMPLEMENTED for Challenge simulation on 2026-11-27. See [MODULE_06_RISK.md](./MODULE_06_RISK.md). |
 | M-07 | Financial Ledger | MVP | PROPOSED (immutability CONFIRMED) |
 | M-08 | Payments and Subscriptions | MVP | PROPOSED |
 | M-09 | Payouts | MVP | PROPOSED |
@@ -65,8 +65,8 @@
 ### M-06 Risk Management
 - **Scope:** pre-trade checks, real-time equity and limit evaluation, breach detection, enforcement (forced close, lock), stage pass/fail, trading-day counting, warnings.
 - **Depends on:** M-04, M-05, M-07.
-- **Blocking questions:** OQ-001 (drawdown precision), OQ-002, OQ-030, OQ-040…OQ-045.
-- **Notes:** highest-risk module; requires a signed-off written specification with worked examples before implementation.
+- **Status (2026-11-27):** implemented for the Challenge simulation. The daily floor is 0.95 times the UTC-day equity high. Max drawdown stays 0.92 times the initial balance. A pass records `PASSED` and does not open the next account. The server process still fail-closes buys. Real Account limits (OQ-040…OQ-045) and Funded Simulation account creation stay open. Contract: [MODULE_06_RISK.md](./MODULE_06_RISK.md).
+- **Blocking questions:** OQ-030, OQ-040…OQ-045. OQ-001 is decided for this simulation by the 2026-11-27 founder decision.
 - **Copy trading (CONFIRMED, not implemented):** for Challenge and Funded Simulation, copy trading is prohibited. A confirmed violation blocks the account with no warning step. Classification requires multiple independent signals (order sequence, entry and exit timing, instrument and direction, size and ratio, repeated patterns, IP or device or account relationships, coordinated activity). Similar trades alone are not proof. Evidence and the audit record must be kept. Detection of every case is not guaranteed. M-06 must consume account identity from M-03, the order and fill records M-05 stores, and the market events M-04 already normalises (instrument, price, size, source and receive timestamps, sequence). This correction does not add a detector to M-02, M-03, or M-04.
 
 ### M-07 Financial Ledger

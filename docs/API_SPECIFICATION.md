@@ -8,7 +8,9 @@
 >
 > **Module 04 (implemented):** market-data normalisation, fixture feeds, bars, and feed health are implemented without a live vendor. The contract is [MODULE_04_MARKET_DATA.md](./MODULE_04_MARKET_DATA.md). The `/v1` rows below were not built.
 >
-> **Module 05 (COMPLETE for simulation):** simulated long-only equity and crypto orders, positions, stop entries, stop-loss, take-profit, and percentage closes are implemented without a `/v1` prefix. The browser reaches them through `/k2-api/trading/...`. The contract is [MODULE_05_TRADING.md](./MODULE_05_TRADING.md). The `/v1` rows below were not built. Production fills stay off. The production risk authorizer still rejects every buy until Module 06.
+> **Module 05 (COMPLETE for simulation):** simulated long-only equity and crypto orders, positions, stop entries, stop-loss, take-profit, and percentage closes are implemented without a `/v1` prefix. The browser reaches them through `/k2-api/trading/...`. The contract is [MODULE_05_TRADING.md](./MODULE_05_TRADING.md). The `/v1` rows below were not built. Production fills stay off. `GET /trading/positions` includes account `equity`.
+>
+> **Module 06 (implemented for the Challenge simulation):** daily loss, max drawdown, pre-trade worst case, breach closes, and stage pass or timeout are implemented. The contract is [MODULE_06_RISK.md](./MODULE_06_RISK.md). The server process still uses the fail-closed authorizer, so a buy from the API is still rejected. No new public route was added. A pass does not create a Stage 2 or Funded account.
 
 ---
 
