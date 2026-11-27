@@ -16,7 +16,7 @@
 | M-05 | Trading Engine (simulation execution; broker adapter later) | MVP (simulation) / Phase 3 (broker) | PROPOSED |
 | M-06 | Risk Management | MVP | IMPLEMENTED for Challenge simulation on 2026-11-27. See [MODULE_06_RISK.md](./MODULE_06_RISK.md). |
 | M-07 | Financial Ledger | MVP | IMPLEMENTED for the simulation journal on 2026-11-27. See [MODULE_07_LEDGER.md](./MODULE_07_LEDGER.md). |
-| M-08 | Payments and Subscriptions | MVP | PROPOSED |
+| M-08 | Payments and Subscriptions | MVP | Sandbox contract 2026-11-27. See [MODULE_08_PAYMENTS.md](./MODULE_08_PAYMENTS.md). |
 | M-09 | Payouts | MVP | PROPOSED |
 | M-10 | KYC and Anti-Fraud | MVP (before first payout) | PROPOSED |
 | M-11 | Trader Dashboard and Terminal | MVP | PROPOSED |
@@ -75,9 +75,10 @@
 - **Status (2026-11-27):** implemented. Contract: [MODULE_07_LEDGER.md](./MODULE_07_LEDGER.md). The journal sum is the posted cash balance. Subscription charges are outside that sum. A mismatch freezes new buys only. Provisional defaults are in the decisions log.
 
 ### M-08 Payments and Subscriptions
-- **Scope:** Challenge checkout, provider webhooks, subscription cycles ($1 per $1,000 per 30 days from first trade — CONFIRMED), refunds, chargebacks.
-- **Depends on:** M-02, M-07; payment provider (OQ-075).
-- **Blocking questions:** OQ-010 (collection method), OQ-014 (refunds).
+- **Scope:** Challenge checkout, provider webhooks, subscription cycles ($1 per $1,000 per 30 days from first trade — CONFIRMED). Refunds are not implemented.
+- **Depends on:** M-02, M-03, M-07.
+- **Status (2026-11-27):** sandbox provider only. See [MODULE_08_PAYMENTS.md](./MODULE_08_PAYMENTS.md). Live mode refuses to start. A failed subscription does not fail or pause the account. Grace expiry is an append-only human review. No production grace length.
+- **Blocking questions:** OQ-010 (collection method), OQ-014 (refunds), the real provider (OQ-075).
 
 ### M-09 Payouts
 - **Scope:** eligibility engine (21 days/7 trading days first; 15 days/7 trading days subsequent; $50 minimum — CONFIRMED), request queue, trade-history review, execution, reconciliation.

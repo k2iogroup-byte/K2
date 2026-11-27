@@ -160,7 +160,7 @@ These are fail-closed defaults. They use no founder-chosen number. Each can be r
 | Severity bands | No production threshold. Every exact cash mismatch is `CRITICAL`. Absolute warning and critical bounds can be passed by a caller later. They are not implied. |
 | Subscription accrual | Accrual runs only for `ACTIVE` accounts. `FAILED` and `PASSED` stop it. |
 | Subscription versus equity | Unchanged and already required: a subscription row does not change the cash sum or equity. |
-| Payments grace | Not implemented here. Grace length has no production default. Expiry must not become an automatic failed or paused account. That review belongs to the payments module. |
+| Payments grace | Not implemented in Module 07. Module 08 writes an append-only human review when grace ends. There is no production day count. Unset configuration does not invent 3 or 7 days: the review row is written immediately. The account is not set to `FAILED` or `PAUSED`. |
 
 ## Part D — Change Procedure (PROPOSED)
 

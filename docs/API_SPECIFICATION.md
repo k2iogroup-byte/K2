@@ -13,6 +13,8 @@
 > **Module 06 (implemented for the Challenge simulation):** daily loss, max drawdown, pre-trade worst case, breach closes, and stage pass or timeout are implemented. The contract is [MODULE_06_RISK.md](./MODULE_06_RISK.md). The server process still uses the fail-closed authorizer, so a buy from the API is still rejected. No new public route was added. A pass does not create a Stage 2 or Funded account.
 >
 > **Module 07 (implemented):** the ledger consumes `ledger_outbox` and does not add a public route. Reversal and freeze lift are internal functions. The contract is [MODULE_07_LEDGER.md](./MODULE_07_LEDGER.md).
+>
+> **Module 08 (sandbox):** challenge purchase and subscription collection go through a provider interface. Only the sandbox is implemented. `PAYMENT_PROVIDER=live` does not start. No card data is stored. The contract is [MODULE_08_PAYMENTS.md](./MODULE_08_PAYMENTS.md).
 
 ---
 
