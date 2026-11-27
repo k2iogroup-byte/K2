@@ -28,14 +28,17 @@ export async function startServer(
   const pool = createPool(config, logger);
   const tradingLock = new TradingLock();
   let poolClosed = false;
+  let stopLockRetry: (() => void) | null = null;
   const closePool = async (): Promise<void> => {
     if (poolClosed) return;
     poolClosed = true;
+    stopLockRetry?.();
     await tradingLock.release();
     await pool.end();
   };
   try {
     await tradingLock.acquire(config.databaseUrl);
+    stopLockRetry = tradingLock.retryWhileWaiting(config.databaseUrl);
     const app = await buildApp({
       config,
       logger: fastifyLogger,

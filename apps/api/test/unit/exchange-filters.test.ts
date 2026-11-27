@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { startCatalogSync } from '../../src/modules/market-data/catalog-sync.js';
+import {
+  BINANCE_EXCHANGE_INFO_URL,
+  fetchBinanceExchangeInfo,
+  parseExchangeInfo,
+  startCatalogSync,
+} from '../../src/modules/market-data/catalog-sync.js';
 import {
   filterViolation,
   instrumentScale,
@@ -79,5 +84,50 @@ describe('exchange filters', () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     held.stop();
     expect(calls).toBe(1);
+  });
+
+  it('keeps a zero-volume USDT pair and does not call the network to parse it', () => {
+    const rows = parseExchangeInfo({
+      symbols: [
+        {
+          symbol: 'DUSTUSDT',
+          status: 'TRADING',
+          baseAsset: 'DUST',
+          quoteAsset: 'USDT',
+          quoteVolume: '0',
+          filters: [
+            { filterType: 'PRICE_FILTER', tickSize: '0.00010000' },
+            { filterType: 'LOT_SIZE', minQty: '1', maxQty: '10', stepSize: '1' },
+            { filterType: 'NOTIONAL', minNotional: '5' },
+          ],
+        },
+        {
+          symbol: 'ETHUSDC',
+          status: 'TRADING',
+          baseAsset: 'ETH',
+          quoteAsset: 'USDC',
+          filters: [
+            { filterType: 'PRICE_FILTER', tickSize: '0.01' },
+            { filterType: 'LOT_SIZE', minQty: '0.001', maxQty: '10', stepSize: '0.001' },
+            { filterType: 'MIN_NOTIONAL', minNotional: '5' },
+          ],
+        },
+      ],
+    });
+    expect(rows.map((row) => row.symbol)).toEqual(['DUSTUSDT']);
+    expect(rows[0]).toMatchObject({ baseAsset: 'DUST', quoteAsset: 'USDT' });
+  });
+
+  it('reads public exchangeInfo with no API key', async () => {
+    const seen: { url: string; headers: string } = { url: '', headers: '' };
+    const payload = await fetchBinanceExchangeInfo((input, init) => {
+      seen.url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      seen.headers = JSON.stringify(init?.headers ?? {});
+      return Promise.resolve(new Response(JSON.stringify({ symbols: [] }), { status: 200 }));
+    });
+    expect(seen.url).toBe(BINANCE_EXCHANGE_INFO_URL);
+    expect(seen.headers.toLowerCase()).not.toContain('x-mbx-apikey');
+    expect(seen.headers.toLowerCase()).not.toContain('authorization');
+    expect(payload).toEqual({ symbols: [] });
   });
 });

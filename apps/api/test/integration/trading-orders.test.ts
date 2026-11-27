@@ -553,7 +553,8 @@ describe('trading orders on postgres', () => {
         status: string;
         checks: { tradingLock: { status: string } };
       };
-      const blocked = (await (await fetch(`http://127.0.0.1:${secondPort}/health`)).json()) as {
+      const blockedResponse = await fetch(`http://127.0.0.1:${secondPort}/health`);
+      const blocked = (await blockedResponse.json()) as {
         status: string;
         checks: { tradingLock: { status: string } };
       };
@@ -561,8 +562,9 @@ describe('trading orders on postgres', () => {
         status: 'ok',
         checks: { tradingLock: { status: 'held' } },
       });
+      expect(blockedResponse.status).toBe(200);
       expect(blocked).toMatchObject({
-        status: 'degraded',
+        status: 'ok',
         checks: { tradingLock: { status: 'unavailable' } },
       });
       const ids = await makeAccount('EQUITIES', 'USD');
@@ -577,10 +579,16 @@ describe('trading orders on postgres', () => {
       );
       expect(denied.rejectReason).toBe('TRADING_LOCK_LOST');
       await first.tradingLock.drop();
-      const dropped = (await (await fetch(`http://127.0.0.1:${firstPort}/health`)).json()) as {
+      const droppedResponse = await fetch(`http://127.0.0.1:${firstPort}/health`);
+      const dropped = (await droppedResponse.json()) as {
+        status: string;
         checks: { tradingLock: { status: string } };
       };
-      expect(dropped.checks.tradingLock.status).toBe('lost');
+      expect(droppedResponse.status).toBe(503);
+      expect(dropped).toMatchObject({
+        status: 'degraded',
+        checks: { tradingLock: { status: 'lost' } },
+      });
       const stopped = await primary.submit(
         order(await makeAccount('EQUITIES', 'USD', ids.instrumentId), {
           quote: quote({ quoteUpdateId: '812' }),

@@ -43,12 +43,15 @@ export function migrationsAreReady(
   required: readonly RequiredMigration[],
 ): boolean {
   if (schemaVersion !== EXPECTED_FOUNDATION_SCHEMA_VERSION) return false;
-  if (required.length === 0 || applied.length !== required.length) return false;
+  if (required.length === 0) return false;
   const seen = new Map<string, string>();
   for (const row of applied) {
     if (seen.has(row.version)) return false;
     seen.set(row.version, row.checksum);
   }
+  // Migrations are additive. A replica built before the latest file is ready
+  // when every migration it knows is present with the same checksum. Newer
+  // applied rows do not make that replica degraded.
   return required.every((migration) => seen.get(migration.version) === migration.checksum);
 }
 

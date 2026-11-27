@@ -11,6 +11,7 @@ import { migrationsDirectory } from '../../src/config/paths.js';
 import { loadMigrations } from '../../src/infrastructure/db/migrator.js';
 import type { DatabaseProbe } from '../../src/infrastructure/db/probe.js';
 import { migrationsAreReady } from '../../src/infrastructure/db/probe.js';
+import { TradingLock } from '../../src/modules/trading/singleton.js';
 import { startServer } from '../../src/server.js';
 import { validEnv } from '../valid-env.js';
 
@@ -55,6 +56,20 @@ describe('application startup and health', () => {
       checks: { database: { status: 'up', schemaVersion: '0001' } },
     });
     expect(JSON.stringify(body)).not.toContain('local-dev-password-value');
+
+    const standby = await buildApp({
+      config,
+      database: probe(),
+      logger: false,
+      tradingLock: new TradingLock(),
+    });
+    const standbyResponse = await standby.inject({ method: 'GET', url: '/health' });
+    expect(standbyResponse.statusCode).toBe(200);
+    expect(standbyResponse.json()).toMatchObject({
+      status: 'ok',
+      checks: { tradingLock: { status: 'unavailable' } },
+    });
+    await standby.close();
 
     const denied = await fetch(`http://127.0.0.1:${port}/health`, {
       headers: { origin: 'https://evil.example' },
@@ -185,7 +200,7 @@ describe('migration readiness', () => {
     { version: '0002', checksum: 'b' },
   ];
 
-  it('accepts an exact checksum match and rejects holes, extras, and a wrong marker', () => {
+  it('accepts a checksum match or a newer additive migration and rejects holes', () => {
     expect(
       migrationsAreReady(
         '0001',
@@ -217,7 +232,7 @@ describe('migration readiness', () => {
         ],
         required,
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       migrationsAreReady(
         '9999',

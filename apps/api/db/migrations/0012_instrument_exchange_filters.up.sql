@@ -6,6 +6,8 @@
 
 CREATE TABLE instrument_exchange_filters (
   instrument_id uuid PRIMARY KEY REFERENCES instruments (id) ON DELETE RESTRICT,
+  base_asset text NOT NULL,
+  quote_asset text NOT NULL,
   tick_size text NOT NULL,
   step_size text NOT NULL,
   min_qty text NOT NULL,
@@ -13,6 +15,8 @@ CREATE TABLE instrument_exchange_filters (
   min_notional text NOT NULL,
   exchange_status text NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT instrument_exchange_filters_base_check CHECK (base_asset ~ '^[A-Z0-9]{1,16}$'),
+  CONSTRAINT instrument_exchange_filters_quote_check CHECK (quote_asset = 'USDT'),
   CONSTRAINT instrument_exchange_filters_decimal_check CHECK (
     tick_size ~ '^(0|[1-9][0-9]*)(\.[0-9]+)?$'
     AND step_size ~ '^(0|[1-9][0-9]*)(\.[0-9]+)?$'

@@ -24,7 +24,9 @@ export function registerHealthRoutes(app: FastifyInstance, options: HealthRouteO
       check = { reachable: false, migrated: false, latencyMs: 0, schemaVersion: null };
     }
     const tradingLock = options.tradingLockStatus?.() ?? 'not_required';
-    const lockReady = tradingLock === 'held' || tradingLock === 'not_required';
+    // A standby replica is waiting for the singleton. It is healthy for the
+    // deploy check and it does not trade. A lost lock is not healthy.
+    const lockReady = tradingLock !== 'lost';
     const ready = check.reachable && check.migrated && lockReady;
     const body = {
       status: ready ? 'ok' : 'degraded',

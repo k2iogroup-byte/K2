@@ -4,11 +4,16 @@ import { instrumentScale } from './exchange-filters.js';
 
 export const CATALOG_REFRESH_MS = 15 * 60 * 1000;
 
+/** Public Spot catalog. The request sends no API key. */
+export const BINANCE_EXCHANGE_INFO_URL = 'https://api.binance.com/api/v3/exchangeInfo';
+
 export type CatalogLock = { fillsAllowed(): boolean };
 
 type ParsedSymbol = {
   symbol: string;
   providerSymbol: string;
+  baseAsset: string;
+  quoteAsset: 'USDT';
   status: 'TRADING' | 'BREAK' | 'HALT' | 'DELISTED';
   tickSize: string;
   stepSize: string;
@@ -33,6 +38,17 @@ export function parseExchangeInfo(payload: unknown): ParsedSymbol[] {
     if (row) parsed.push(row);
   }
   return parsed;
+}
+
+export async function fetchBinanceExchangeInfo(fetchImpl: typeof fetch): Promise<unknown> {
+  const response = await fetchImpl(BINANCE_EXCHANGE_INFO_URL, {
+    method: 'GET',
+    headers: { accept: 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error(`Binance exchangeInfo responded ${response.status}`);
+  }
+  return await response.json();
 }
 
 export async function syncExchangeCatalog(
@@ -114,7 +130,9 @@ function readSymbol(entry: unknown): ParsedSymbol | null {
   if (typeof entry !== 'object' || entry === null) return null;
   const row = entry as Record<string, unknown>;
   if (row.quoteAsset !== 'USDT' || typeof row.symbol !== 'string') return null;
-  if (!/^[A-Z0-9][A-Z0-9.-]{0,31}$/.test(row.symbol)) return null;
+  if (!/^[A-Z0-9][A-Z0-9.-]{0,31}$/.test(row.symbol) || !row.symbol.endsWith('USDT')) return null;
+  const baseAsset = typeof row.baseAsset === 'string' ? row.baseAsset : row.symbol.slice(0, -4);
+  if (!/^[A-Z0-9]{1,16}$/.test(baseAsset) || row.symbol !== `${baseAsset}USDT`) return null;
   const status = exchangeStatus(row.status);
   if (!status) return null;
   const filters = Array.isArray(row.filters) ? row.filters : [];
@@ -130,6 +148,8 @@ function readSymbol(entry: unknown): ParsedSymbol | null {
   return {
     symbol: row.symbol,
     providerSymbol: row.symbol.toLowerCase(),
+    baseAsset,
+    quoteAsset: 'USDT',
     status,
     tickSize,
     stepSize,
@@ -193,16 +213,28 @@ async function upsert(
   if (!id) return;
   await client.query(
     `INSERT INTO instrument_exchange_filters (
-       instrument_id, tick_size, step_size, min_qty, max_qty, min_notional, exchange_status
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+       instrument_id, base_asset, quote_asset, tick_size, step_size, min_qty, max_qty,
+       min_notional, exchange_status
+     ) VALUES ($1, $2, 'USDT', $3, $4, $5, $6, $7, $8)
      ON CONFLICT (instrument_id) DO UPDATE
-       SET tick_size = EXCLUDED.tick_size,
+       SET base_asset = EXCLUDED.base_asset,
+           quote_asset = EXCLUDED.quote_asset,
+           tick_size = EXCLUDED.tick_size,
            step_size = EXCLUDED.step_size,
            min_qty = EXCLUDED.min_qty,
            max_qty = EXCLUDED.max_qty,
            min_notional = EXCLUDED.min_notional,
            exchange_status = EXCLUDED.exchange_status,
            updated_at = now()`,
-    [id, row.tickSize, row.stepSize, row.minQty, row.maxQty, row.minNotional, row.status],
+    [
+      id,
+      row.baseAsset,
+      row.tickSize,
+      row.stepSize,
+      row.minQty,
+      row.maxQty,
+      row.minNotional,
+      row.status,
+    ],
   );
 }

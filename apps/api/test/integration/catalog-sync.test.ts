@@ -60,11 +60,14 @@ describe('binance catalog sync', () => {
       trading_status: string;
       price_scale: number;
       quantity_scale: number;
+      base_asset: string;
+      quote_asset: string;
       tick_size: string;
       max_qty: string;
     }>(
       `SELECT instruments.symbol, instruments.trading_status, instruments.price_scale,
-              instruments.quantity_scale, instrument_exchange_filters.tick_size,
+              instruments.quantity_scale, instrument_exchange_filters.base_asset,
+              instrument_exchange_filters.quote_asset, instrument_exchange_filters.tick_size,
               instrument_exchange_filters.max_qty
          FROM instruments
          JOIN instrument_exchange_filters ON instrument_exchange_filters.instrument_id = instruments.id
@@ -77,6 +80,8 @@ describe('binance catalog sync', () => {
         trading_status: 'TRADABLE',
         price_scale: 2,
         quantity_scale: 5,
+        base_asset: 'ZBTC',
+        quote_asset: 'USDT',
         tick_size: '0.01000000',
         max_qty: '9000.00000000',
       },
@@ -85,6 +90,8 @@ describe('binance catalog sync', () => {
         trading_status: 'HALTED',
         price_scale: 2,
         quantity_scale: 3,
+        base_asset: 'ZOLD',
+        quote_asset: 'USDT',
         tick_size: '0.01000000',
         max_qty: '1000.00000000',
       },
@@ -93,6 +100,8 @@ describe('binance catalog sync', () => {
         trading_status: 'TRADABLE',
         price_scale: 8,
         quantity_scale: 0,
+        base_asset: 'ZPEPE',
+        quote_asset: 'USDT',
         tick_size: '0.00000123',
         max_qty: '9000000000',
       },

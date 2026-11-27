@@ -17,7 +17,7 @@ import { registerAuthRoutes } from './modules/auth/auth-routes.js';
 import { createEmailSender, type EmailSender } from './modules/auth/email.js';
 import type { RateLimiter } from './modules/auth/rate-limit.js';
 import { registerHealthRoutes } from './modules/health/health-route.js';
-import { startCatalogSync } from './modules/market-data/catalog-sync.js';
+import { fetchBinanceExchangeInfo, startCatalogSync } from './modules/market-data/catalog-sync.js';
 import { MarketDataEngine } from './modules/market-data/engine.js';
 import { registerFixtureQuoteRoute } from './modules/market-data/fixture-quote-route.js';
 import { registerMarketDataRoutes } from './modules/market-data/market-data-routes.js';
@@ -144,7 +144,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     const catalog = startCatalogSync({
       pool: options.pool,
       lock: options.tradingLock ?? null,
-      load: () => Promise.resolve(null),
+      load: () =>
+        options.config.marketDataMode === 'binance-public'
+          ? fetchBinanceExchangeInfo(fetch)
+          : Promise.resolve(null),
     });
     app.addHook('onClose', () => {
       catalog.stop();
