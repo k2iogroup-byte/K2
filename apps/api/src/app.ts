@@ -17,6 +17,10 @@ import { registerAuthRoutes } from './modules/auth/auth-routes.js';
 import { createEmailSender, type EmailSender } from './modules/auth/email.js';
 import type { RateLimiter } from './modules/auth/rate-limit.js';
 import { registerHealthRoutes } from './modules/health/health-route.js';
+import {
+  nodeWebSocketConnector,
+  openLiveBookTickerFeed,
+} from './modules/market-data/binance-spot-ws.js';
 import { fetchBinanceExchangeInfo, startCatalogSync } from './modules/market-data/catalog-sync.js';
 import { MarketDataEngine } from './modules/market-data/engine.js';
 import { registerFixtureQuoteRoute } from './modules/market-data/fixture-quote-route.js';
@@ -155,13 +159,27 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     if (options.config.appEnv === 'development') {
       registerFixtureQuoteRoute(app, auth, engine, options.pool);
     }
-    if (provider) {
-      provider.start((event) => {
-        void engine.ingest(event).catch(() => {
-          app.log.error({ event: 'market_data_ingest_failed' }, 'market data ingest failed');
-        });
+    const ingest = (event: Parameters<MarketDataEngine['ingest']>[0]): void => {
+      void engine.ingest(event).catch(() => {
+        app.log.error({ event: 'market_data_ingest_failed' }, 'market data ingest failed');
       });
-    }
+    };
+    if (provider) provider.start(ingest);
+    const liveBook = openLiveBookTickerFeed({
+      mode: options.config.marketDataMode,
+      connect: nodeWebSocketConnector,
+      onEvent: ingest,
+    });
+    liveBook?.subscribe(
+      instruments
+        .filter(
+          (instrument) => instrument.market === 'CRYPTO' && instrument.symbol.endsWith('USDT'),
+        )
+        .map((instrument) => instrument.symbol),
+    );
+    app.addHook('onClose', () => {
+      liveBook?.stop();
+    });
     await registerWebSocket(app, options.config, connections);
     registerMarketDataSocket(app, options.config, auth, engine, connections);
     registerTradingSocket(app, options.config, auth, connections, fanout);
