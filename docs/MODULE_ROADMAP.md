@@ -15,7 +15,7 @@
 | M-04 | Market Data Infrastructure | MVP | PROPOSED (real data CONFIRMED required) |
 | M-05 | Trading Engine (simulation execution; broker adapter later) | MVP (simulation) / Phase 3 (broker) | PROPOSED |
 | M-06 | Risk Management | MVP | IMPLEMENTED for Challenge simulation on 2026-11-27. See [MODULE_06_RISK.md](./MODULE_06_RISK.md). |
-| M-07 | Financial Ledger | MVP | PROPOSED (immutability CONFIRMED) |
+| M-07 | Financial Ledger | MVP | Contract 2026-11-27. See [MODULE_07_LEDGER.md](./MODULE_07_LEDGER.md). |
 | M-08 | Payments and Subscriptions | MVP | PROPOSED |
 | M-09 | Payouts | MVP | PROPOSED |
 | M-10 | KYC and Anti-Fraud | MVP (before first payout) | PROPOSED |
@@ -70,9 +70,9 @@
 - **Copy trading (CONFIRMED, not implemented):** for Challenge and Funded Simulation, copy trading is prohibited. A confirmed violation blocks the account with no warning step. Classification requires multiple independent signals (order sequence, entry and exit timing, instrument and direction, size and ratio, repeated patterns, IP or device or account relationships, coordinated activity). Similar trades alone are not proof. Evidence and the audit record must be kept. Detection of every case is not guaranteed. M-06 must consume account identity from M-03, the order and fill records M-05 stores, and the market events M-04 already normalises (instrument, price, size, source and receive timestamps, sequence). This correction does not add a detector to M-02, M-03, or M-04.
 
 ### M-07 Financial Ledger
-- **Scope:** double-entry, append-only journal; simulated vs real books; projections for balances; reconciliation tooling.
-- **Depends on:** M-01.
-- **Notes:** foundational — almost every module posts to it.
+- **Scope:** append-only signed cash journal fed by the Module 05 outbox, reconciliation against the simulation cash projection, buy freeze on mismatch, subscription accrual that does not change equity.
+- **Depends on:** M-01, M-05.
+- **Status (2026-11-27):** contract in [MODULE_07_LEDGER.md](./MODULE_07_LEDGER.md). The journal sum is the posted cash balance. Subscription charges are outside that sum. A mismatch freezes new buys only. Provisional defaults are in the decisions log.
 
 ### M-08 Payments and Subscriptions
 - **Scope:** Challenge checkout, provider webhooks, subscription cycles ($1 per $1,000 per 30 days from first trade — CONFIRMED), refunds, chargebacks.

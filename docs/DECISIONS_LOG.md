@@ -150,6 +150,18 @@ These decisions are from the founder on 2026-11-27. They apply to Challenge and 
 | Stage result | Stage 1 target is 8 percent and Stage 2 is 5 percent, both on closed balance, with at least 7 trading days and no open position. Stage 1 allows 30 calendar days from the first execution and Stage 2 allows 60. A pass writes `PASSED` and one `risk_stage_outcomes` row. It does not open a Stage 2 or Funded account. A timeout without the target is `FAILED` and force-closes like a breach. |
 | Schema | No change to `trading_accounts` or `purchase_evidence`. Risk rows are append-only in migration `0013`. |
 
+## Provisional — Module 07, awaiting founder (2026-11-27)
+
+These are fail-closed defaults. They use no founder-chosen number. Each can be reversed by a later decision. They are not approved founder decisions.
+
+| Topic | Provisional choice |
+|---|---|
+| Freeze lift | A reconciliation freeze stays until `liftLedgerFreeze` appends a lift row. Balances matching again does not lift it. |
+| Severity bands | No production threshold. Every exact cash mismatch is `CRITICAL`. Absolute warning and critical bounds can be passed by a caller later. They are not implied. |
+| Subscription accrual | Accrual runs only for `ACTIVE` accounts. `FAILED` and `PASSED` stop it. |
+| Subscription versus equity | Unchanged and already required: a subscription row does not change the cash sum or equity. |
+| Payments grace | Not implemented here. Grace length has no production default. Expiry must not become an automatic failed or paused account. That review belongs to the payments module. |
+
 ## Part D — Change Procedure (PROPOSED)
 
 1. Change request references the affected BR/D/P/OQ IDs.
