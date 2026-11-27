@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS kyc_document_refs;
+DROP TABLE IF EXISTS kyc_events;
+DROP TABLE IF EXISTS kyc_cases;
+DROP TABLE IF EXISTS sandbox_payouts;
+DROP TABLE IF EXISTS journal_supplements;
+DROP TABLE IF EXISTS payout_audit;
+DROP TABLE IF EXISTS payout_requests;
+DROP TABLE IF EXISTS human_review_decisions;
+DROP TABLE IF EXISTS human_review_cases;
+DROP TABLE IF EXISTS funded_activations;

@@ -125,5 +125,11 @@ async function openReview(
      RETURNING id`,
     [subscriptionChargeId, accountId],
   );
+  await pool.query(
+    `INSERT INTO human_review_cases (subject_type, subject_id, account_id, actor_type)
+     VALUES ('PAYMENT_GRACE_EXPIRY', $1, $2, 'SYSTEM')
+     ON CONFLICT (subject_type, subject_id) DO NOTHING`,
+    [subscriptionChargeId, accountId],
+  );
   return (row.rowCount ?? 0) > 0;
 }

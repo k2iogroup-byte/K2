@@ -16,7 +16,7 @@
 >
 > **Module 08 (implemented, sandbox):** challenge purchase and subscription collection go through a provider interface. Only the sandbox is implemented. `PAYMENT_PROVIDER=live` does not start. No card data is stored. The contract is [MODULE_08_PAYMENTS.md](./MODULE_08_PAYMENTS.md).
 >
-> **Module 09 (contract):** payout eligibility, an append-only request, and a sandbox disbursement. No Funded account is created. The contract is [MODULE_09_PAYOUTS.md](./MODULE_09_PAYOUTS.md).
+> **Module 09 (implemented, sandbox):** payout eligibility, an append-only request, and a sandbox disbursement. No Funded account is created. The contract is [MODULE_09_PAYOUTS.md](./MODULE_09_PAYOUTS.md).
 
 ---
 

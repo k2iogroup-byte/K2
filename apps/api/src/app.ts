@@ -29,6 +29,7 @@ import { registerMarketDataRoutes } from './modules/market-data/market-data-rout
 import { registerMarketDataSocket } from './modules/market-data/market-data-ws.js';
 import { createProvider } from './modules/market-data/provider.js';
 import { MarketDataStore } from './modules/market-data/store.js';
+import { registerPayoutRoutes } from './modules/payouts/payout-routes.js';
 import { reviewStages } from './modules/risk/stage.js';
 import { Phase2Orders } from './modules/trading/phase2-orders.js';
 import { bindTradingQuotes } from './modules/trading/quote-bridge.js';
@@ -145,6 +146,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       fanout,
     );
     registerTradingRoutes(app, auth, trading, phase2, options.pool, fanout);
+    registerPayoutRoutes(app, auth, options.pool);
     bindTradingQuotes(engine, phase2);
     if (options.tradingLock?.fillsAllowed()) await phase2.evaluateSnapshots();
     const stagePool = options.pool;

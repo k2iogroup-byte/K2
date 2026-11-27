@@ -1,6 +1,6 @@
 # Module 09 — Payouts
 
-**Status:** Contract 2026-11-27. No real payout rail. An approved payout is recorded for the sandbox only. No Funded account is created.
+**Status:** Implemented 2026-11-27. No real payout rail. An approved payout is recorded for the sandbox only. No Funded account is created.
 
 ## Eligibility
 
