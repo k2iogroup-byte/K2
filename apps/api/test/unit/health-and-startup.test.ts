@@ -263,6 +263,7 @@ describe('migration files', () => {
       '0010',
       '0011',
       '0012',
+      '0013',
     ]);
     const dir = mkdtempSync(path.join(tmpdir(), 'k2-mig-'));
     writeFileSync(path.join(dir, '0001_only.up.sql'), 'SELECT 1;');

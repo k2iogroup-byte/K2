@@ -335,12 +335,19 @@ export class TradingService {
       return this.persistReject(client, input, locked.initial_capital, instrument, positionReject);
     }
 
-    const decision = await this.authorizer.authorize({
-      accountId: input.accountId,
-      instrumentId: input.instrumentId,
-      side: input.side,
-      quantity: input.quantity,
-    });
+    const decision = await this.authorizer.authorize(
+      {
+        accountId: input.accountId,
+        instrumentId: input.instrumentId,
+        side: input.side,
+        quantity: input.quantity,
+        orderType: input.orderType,
+        limitPrice: input.limitPrice,
+        bid: input.quote?.bid ?? null,
+        ask: input.quote?.ask ?? null,
+      },
+      client,
+    );
     if (decision.decision === 'REJECT') {
       return this.persistReject(
         client,

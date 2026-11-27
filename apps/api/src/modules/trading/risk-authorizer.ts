@@ -1,21 +1,27 @@
 import { randomUUID } from 'node:crypto';
 
+import type { PoolClient } from 'pg';
+
 export type RiskAuthorizationRequest = {
   accountId: string;
   instrumentId: string;
   side: 'BUY' | 'SELL';
   quantity: string;
+  orderType?: 'MARKET' | 'LIMIT';
+  limitPrice?: string | null;
+  bid?: string | null;
+  ask?: string | null;
 };
 
 export type RiskDecision = {
   decision: 'APPROVE' | 'REJECT';
   decisionId: string;
   reasonCode: string;
-  mode: 'FAIL_CLOSED' | 'TEST_DOUBLE' | 'RISK_REDUCING';
+  mode: 'FAIL_CLOSED' | 'TEST_DOUBLE' | 'RISK_REDUCING' | 'RISK_ENGINE';
 };
 
 export interface RiskAuthorizer {
-  authorize(request: RiskAuthorizationRequest): Promise<RiskDecision>;
+  authorize(request: RiskAuthorizationRequest, client?: PoolClient): Promise<RiskDecision>;
 }
 
 export interface SessionCalendar {

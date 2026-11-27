@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { dailyLossFloor, drawdownFloor, equityBreaches } from '../../src/modules/risk/limits.js';
+import {
+  dailyLossFloor,
+  drawdownFloor,
+  equityBreaches,
+  higherPrice,
+  stressedEquity,
+} from '../../src/modules/risk/limits.js';
 
 describe('risk floors', () => {
   it('sets the daily floor from an intraday equity high of 105000', () => {
@@ -14,5 +20,19 @@ describe('risk floors', () => {
     expect(drawdownFloor('100000.0000')).toBe('92000.0000');
     expect(equityBreaches('92000.0000', '92000.0000')).toBe(true);
     expect(equityBreaches('92000.0001', '92000.0000')).toBe(false);
+  });
+
+  it('stresses a buy at the worst fill and ignores a favorable mark gap', () => {
+    const buy = {
+      quantity: '3000',
+      quantityScale: 0,
+      fillPrice: '11.00',
+      mark: '10.00',
+      priceScale: 2,
+    };
+    expect(stressedEquity('100000.0000', [buy])).toBe('96835.0000');
+    expect(stressedEquity('100000.0000', [buy, buy])).toBe('93670.0000');
+    expect(higherPrice('15.00', '12.00', 2)).toBe('15.00');
+    expect(higherPrice('11.00', '12.00', 2)).toBe('12.00');
   });
 });
