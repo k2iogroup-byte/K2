@@ -15,7 +15,7 @@
 | M-04 | Market Data Infrastructure | MVP | PROPOSED (real data CONFIRMED required) |
 | M-05 | Trading Engine (simulation execution; broker adapter later) | MVP (simulation) / Phase 3 (broker) | PROPOSED |
 | M-06 | Risk Management | MVP | IMPLEMENTED for Challenge simulation on 2026-11-27. See [MODULE_06_RISK.md](./MODULE_06_RISK.md). |
-| M-07 | Financial Ledger | MVP | Contract 2026-11-27. See [MODULE_07_LEDGER.md](./MODULE_07_LEDGER.md). |
+| M-07 | Financial Ledger | MVP | IMPLEMENTED for the simulation journal on 2026-11-27. See [MODULE_07_LEDGER.md](./MODULE_07_LEDGER.md). |
 | M-08 | Payments and Subscriptions | MVP | PROPOSED |
 | M-09 | Payouts | MVP | PROPOSED |
 | M-10 | KYC and Anti-Fraud | MVP (before first payout) | PROPOSED |
@@ -72,7 +72,7 @@
 ### M-07 Financial Ledger
 - **Scope:** append-only signed cash journal fed by the Module 05 outbox, reconciliation against the simulation cash projection, buy freeze on mismatch, subscription accrual that does not change equity.
 - **Depends on:** M-01, M-05.
-- **Status (2026-11-27):** contract in [MODULE_07_LEDGER.md](./MODULE_07_LEDGER.md). The journal sum is the posted cash balance. Subscription charges are outside that sum. A mismatch freezes new buys only. Provisional defaults are in the decisions log.
+- **Status (2026-11-27):** implemented. Contract: [MODULE_07_LEDGER.md](./MODULE_07_LEDGER.md). The journal sum is the posted cash balance. Subscription charges are outside that sum. A mismatch freezes new buys only. Provisional defaults are in the decisions log.
 
 ### M-08 Payments and Subscriptions
 - **Scope:** Challenge checkout, provider webhooks, subscription cycles ($1 per $1,000 per 30 days from first trade — CONFIRMED), refunds, chargebacks.

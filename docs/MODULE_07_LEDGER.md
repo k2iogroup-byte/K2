@@ -1,6 +1,6 @@
 # Module 07 — Ledger
 
-**Status:** Contract recorded 2026-11-27. The journal is the cash record for the simulation. It does not trade, collect money, or talk to a broker. Production fills stay off.
+**Status:** Implemented 2026-11-27 for the simulation journal. It does not trade, collect money, or talk to a broker. Production fills stay off.
 
 ## What Module 05 already writes
 
