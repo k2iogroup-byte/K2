@@ -8,6 +8,7 @@ import type { AuthService } from '../auth/auth-service.js';
 import { PERMISSIONS, requirePermission, requireVerifiedEmail } from '../auth/rbac.js';
 import { noStore, requireRead, requireWrite, sendJson } from '../auth/request-context.js';
 import { closeByPercent } from './close-position.js';
+import { accountEquity, type EquityLeg } from './equity.js';
 import type { Phase2Orders } from './phase2-orders.js';
 import { orderActionAllowed } from './phase2-orders.js';
 import {
@@ -80,6 +81,7 @@ const orderListSchema = z.strictObject({
 });
 
 const positionListSchema = z.strictObject({
+  equity: z.string().nullable(),
   positions: z.array(
     z.strictObject({
       positionId: z.uuid(),
@@ -286,6 +288,7 @@ export function registerTradingRoutes(
       [query.accountId, session.userId],
     );
     return sendJson(reply, 200, positionListSchema, {
+      equity: await listedEquity(pool, query.accountId),
       positions: rows.rows.map((row) => ({
         positionId: row.id,
         instrumentId: row.instrument_id,
@@ -485,4 +488,40 @@ async function loadQuote(pool: Pool, instrumentId: string): Promise<ExecutableQu
     feedState: quote.feed_state,
     priceOrigin: quote.price_origin,
   };
+}
+
+async function listedEquity(pool: Pool, accountId: string): Promise<string | null> {
+  const cash = await pool.query<{ cash: string }>(
+    'SELECT cash::text FROM simulation_cash_projections WHERE account_id = $1',
+    [accountId],
+  );
+  const cashText = cash.rows[0]?.cash;
+  if (!cashText) return null;
+  const legs = await pool.query<{
+    quantity: string;
+    quantity_scale: number;
+    price_scale: number;
+    quote_asset: string | null;
+    bid: string | null;
+  }>(
+    `SELECT positions.quantity::text, instruments.quantity_scale, instruments.price_scale,
+            instruments.quote_asset, quote_snapshots.bid::text AS bid
+       FROM positions
+       JOIN instruments ON instruments.id = positions.instrument_id
+       LEFT JOIN quote_snapshots ON quote_snapshots.instrument_id = positions.instrument_id
+      WHERE positions.account_id = $1 AND positions.status = 'OPEN' AND positions.quantity > 0`,
+    [accountId],
+  );
+  const valued: EquityLeg[] = [];
+  for (const leg of legs.rows) {
+    if (!leg.bid || !leg.quote_asset) return null;
+    valued.push({
+      quantity: leg.quantity,
+      quantityScale: leg.quantity_scale,
+      bid: leg.bid,
+      priceScale: leg.price_scale,
+      quoteAsset: leg.quote_asset,
+    });
+  }
+  return accountEquity(cashText, valued);
 }
