@@ -7,7 +7,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { apiPackageRoot } from '../../src/config/paths.js';
 import { migrateUp } from '../../src/infrastructure/db/migrator.js';
 import { isEligible } from '../../src/modules/payouts/eligibility.js';
-import { latestStatus, queuePayoutReview, requestPayout } from '../../src/modules/payouts/requests.js';
+import {
+  latestStatus,
+  queuePayoutReview,
+  requestPayout,
+} from '../../src/modules/payouts/requests.js';
 import { PayoutRejected } from '../../src/modules/payouts/requests.js';
 import { approvePayout, rejectPayout } from '../../src/modules/payouts/review.js';
 
@@ -35,10 +39,17 @@ describe('payout eligibility on postgres', () => {
     expect((await isEligible(pool, short.accountId, short.now)).reason).toBe('CALENDAR_DAYS');
     const few = await readyAccount({ days: 21, tradingDays: 6, verified: true });
     expect((await isEligible(pool, few.accountId, few.now)).reason).toBe('TRADING_DAYS');
-    const open = await readyAccount({ days: 21, tradingDays: 7, verified: true, openPosition: true });
+    const open = await readyAccount({
+      days: 21,
+      tradingDays: 7,
+      verified: true,
+      openPosition: true,
+    });
     expect((await isEligible(pool, open.accountId, open.now)).reason).toBe('OPEN_POSITION');
     const unverified = await readyAccount({ days: 21, tradingDays: 7, verified: false });
-    expect((await isEligible(pool, unverified.accountId, unverified.now)).reason).toBe('KYC_REQUIRED');
+    expect((await isEligible(pool, unverified.accountId, unverified.now)).reason).toBe(
+      'KYC_REQUIRED',
+    );
   });
 
   it('opens a pending request and pays 70 percent through the sandbox', async () => {

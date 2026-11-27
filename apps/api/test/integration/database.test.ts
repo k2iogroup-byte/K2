@@ -422,7 +422,14 @@ describe('database connectivity and migrations', () => {
       "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'deferred_closes'",
     );
     expect(kept.rowCount).toBe(1);
-    expect(await migrateUp(pool, directory)).toEqual(['0011', '0012', '0013', '0014', '0015', '0016']);
+    expect(await migrateUp(pool, directory)).toEqual([
+      '0011',
+      '0012',
+      '0013',
+      '0014',
+      '0015',
+      '0016',
+    ]);
     const restored = await pool.query(
       `SELECT 1 FROM commission_market_scopes
         WHERE market = 'CRYPTO' AND decision_ref = 'D-CRYPTO-USDT-20261121'`,
