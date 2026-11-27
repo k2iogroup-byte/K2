@@ -18,7 +18,7 @@
 | M-07 | Financial Ledger | MVP | IMPLEMENTED for the simulation journal on 2026-11-27. See [MODULE_07_LEDGER.md](./MODULE_07_LEDGER.md). |
 | M-08 | Payments and Subscriptions | MVP | IMPLEMENTED as a sandbox on 2026-11-27. See [MODULE_08_PAYMENTS.md](./MODULE_08_PAYMENTS.md). |
 | M-09 | Payouts | MVP | IMPLEMENTED as a sandbox on 2026-11-27. See [MODULE_09_PAYOUTS.md](./MODULE_09_PAYOUTS.md). |
-| M-10 | KYC and Anti-Fraud | MVP (before first payout) | PROPOSED |
+| M-10 | KYC and Anti-Fraud | MVP (before first payout) | Sandbox KYC contract 2026-11-27. See [MODULE_10_KYC.md](./MODULE_10_KYC.md). |
 | M-11 | Trader Dashboard and Terminal | MVP | PROPOSED |
 | M-12 | Admin Control System | MVP | PROPOSED |
 | M-13 | Notifications | MVP (email + in-app) | PROPOSED |
@@ -89,6 +89,7 @@
 ### M-10 KYC and Anti-Fraud
 - **Scope:** vendor KYC, sanctions/PEP screening, device fingerprinting, multi-account detection, behavioural abuse detection.
 - **Depends on:** M-02; KYC vendor (OQ-076); legal jurisdiction review (OQ-080).
+- **Status (2026-11-27):** sandbox KYC contract only. See [MODULE_10_KYC.md](./MODULE_10_KYC.md). No document contents are stored. `KYC_PROVIDER=live` cannot start. Sanctions, devices, and multi-account detection are not implemented. KYC before a payout is provisional.
 
 ### M-11 Trader Dashboard and Terminal
 - **Scope:** dark institutional PWA (CONFIRMED), charts from real data, order ticket, positions, rule meters, account history, payouts UI, session/feed status indicators.
