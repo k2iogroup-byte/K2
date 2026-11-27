@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { DecimalError, decimalGreaterThan } from '@k2/shared';
 import type { PoolClient } from 'pg';
 
+import { freezeIsActive } from '../ledger/reconcile.js';
 import { accountEquity, type EquityLeg } from '../trading/equity.js';
 import {
   type RiskAuthorizationRequest,
@@ -43,6 +44,9 @@ export async function evaluatePretrade(
   );
   const initial = account.rows[0]?.initial_capital;
   if (!initial) return unavailable();
+  if (request.side === 'BUY' && (await freezeIsActive(client, request.accountId))) {
+    return record(client, request.accountId, 'REJECT', 'LEDGER_FROZEN', null, null, null);
+  }
 
   const equity = await readAccountEquity(client, request.accountId);
   if (!equity)

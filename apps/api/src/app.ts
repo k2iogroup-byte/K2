@@ -17,6 +17,7 @@ import { registerAuthRoutes } from './modules/auth/auth-routes.js';
 import { createEmailSender, type EmailSender } from './modules/auth/email.js';
 import type { RateLimiter } from './modules/auth/rate-limit.js';
 import { registerHealthRoutes } from './modules/health/health-route.js';
+import { runLedgerMaintenance } from './modules/ledger/cycle.js';
 import {
   nodeWebSocketConnector,
   openLiveBookTickerFeed,
@@ -153,6 +154,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
           if (!stageLock.fillsAllowed()) return;
           void reviewStages(stagePool, trading).catch((error: unknown) => {
             app.log.error({ err: error }, 'stage review failed');
+          });
+          void runLedgerMaintenance(stagePool).catch((error: unknown) => {
+            app.log.error({ err: error }, 'ledger maintenance failed');
           });
         }, 60_000)
       : undefined;

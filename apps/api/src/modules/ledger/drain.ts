@@ -103,7 +103,7 @@ function signedFill(side: string | null, amount: string): string | null {
   return null;
 }
 
-async function ensureOpening(client: PoolClient, accountId: string): Promise<void> {
+export async function ensureOpening(client: PoolClient, accountId: string): Promise<void> {
   await client.query(
     `INSERT INTO journal_entries (
        account_id, entry_type, amount, cash_effect, idempotency_key, actor_type
