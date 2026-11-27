@@ -16,6 +16,7 @@ import type { Pool, PoolClient } from 'pg';
 import { DEFAULT_STALE_AFTER_MS } from '../market-data/engine.js';
 import { filterViolation } from '../market-data/exchange-filters.js';
 import { settleAccount } from '../risk/breach.js';
+import { evaluateProgress } from '../risk/stage.js';
 import { liquiditySource, type LiquidityTake, takeLiquidity } from './liquidity.js';
 import {
   ClosedEquityCalendar,
@@ -421,12 +422,11 @@ export class TradingService {
     result: TradingOrderResult,
   ): Promise<TradingOrderResult> {
     if (mode === 'standard' && result.rejectReason === null) {
-      await settleAccount(
-        client,
-        this,
-        input.accountId,
-        input.quote ? { instrumentId: input.instrumentId, bid: input.quote.bid } : undefined,
-      );
+      const overlay = input.quote
+        ? { instrumentId: input.instrumentId, bid: input.quote.bid, quote: input.quote }
+        : undefined;
+      await settleAccount(client, this, input.accountId, overlay);
+      await evaluateProgress(client, this, input.accountId, new Date(), overlay);
     }
     return result;
   }
@@ -1235,6 +1235,12 @@ export class TradingService {
     );
     const id = inserted.rows[0]?.id;
     if (!id) throw new Error('execution insert returned no id');
+    await client.query(
+      `INSERT INTO risk_trading_days (account_id, utc_date, first_execution_id)
+       VALUES ($1, (transaction_timestamp() AT TIME ZONE 'UTC')::date, $2)
+       ON CONFLICT (account_id, utc_date) DO NOTHING`,
+      [args.input.accountId, id],
+    );
     return id;
   }
 

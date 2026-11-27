@@ -28,6 +28,7 @@ import { registerMarketDataRoutes } from './modules/market-data/market-data-rout
 import { registerMarketDataSocket } from './modules/market-data/market-data-ws.js';
 import { createProvider } from './modules/market-data/provider.js';
 import { MarketDataStore } from './modules/market-data/store.js';
+import { reviewStages } from './modules/risk/stage.js';
 import { Phase2Orders } from './modules/trading/phase2-orders.js';
 import { bindTradingQuotes } from './modules/trading/quote-bridge.js';
 import type { TradingLock } from './modules/trading/singleton.js';
@@ -145,6 +146,17 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     registerTradingRoutes(app, auth, trading, phase2, options.pool, fanout);
     bindTradingQuotes(engine, phase2);
     if (options.tradingLock?.fillsAllowed()) await phase2.evaluateSnapshots();
+    const stagePool = options.pool;
+    const stageLock = options.tradingLock;
+    const stageTimer = stageLock?.fillsAllowed()
+      ? setInterval(() => {
+          if (!stageLock.fillsAllowed()) return;
+          void reviewStages(stagePool, trading).catch((error: unknown) => {
+            app.log.error({ err: error }, 'stage review failed');
+          });
+        }, 60_000)
+      : undefined;
+    stageTimer?.unref();
     const catalog = startCatalogSync({
       pool: options.pool,
       lock: options.tradingLock ?? null,
@@ -154,6 +166,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
           : Promise.resolve(null),
     });
     app.addHook('onClose', () => {
+      if (stageTimer) clearInterval(stageTimer);
       catalog.stop();
     });
     if (options.config.appEnv === 'development') {

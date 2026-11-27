@@ -10,6 +10,7 @@ import type {
 } from '../trading/trading-service.js';
 import { readAccountEquity, rememberEquityHigh } from './engine.js';
 import { dailyLossFloor, drawdownFloor, stressedBreaches } from './limits.js';
+import { evaluateProgress } from './stage.js';
 
 const MONEY = 4;
 
@@ -39,11 +40,9 @@ export async function evaluateInstrumentBreach(
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await settleAccount(client, trading, row.account_id, {
-        instrumentId,
-        bid: quote.bid,
-        quote,
-      });
+      const overlay = { instrumentId, bid: quote.bid, quote };
+      await settleAccount(client, trading, row.account_id, overlay);
+      await evaluateProgress(client, trading, row.account_id, new Date(), overlay);
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -110,6 +109,45 @@ export async function settleAccount(
   if (locked.state === 'ACTIVE') await markFailed(client, accountId, breachId);
 }
 
+/** Timeout uses the same forced close as a floor breach. */
+export async function failAccount(
+  client: PoolClient,
+  trading: RiskCloser,
+  accountId: string,
+  kind: 'TIMEOUT',
+  overlay?: { instrumentId: string; bid: string; quote?: ExecutableQuote },
+): Promise<void> {
+  const account = await client.query<{ state: string; user_id: string }>(
+    `SELECT state, user_id FROM trading_accounts WHERE id = $1 FOR UPDATE`,
+    [accountId],
+  );
+  const locked = account.rows[0];
+  if (!locked || (locked.state !== 'ACTIVE' && locked.state !== 'FAILED')) return;
+  let breachId = await existingBreach(client, accountId);
+  if (locked.state === 'ACTIVE' && !breachId) {
+    breachId = await insertBreach(client, accountId, kind, null, null);
+    await client.query(
+      `INSERT INTO risk_decisions (account_id, kind, decision, reason_code)
+       VALUES ($1, 'FAIL', 'REJECT', $2)`,
+      [accountId, kind],
+    );
+    await client.query(
+      `INSERT INTO risk_stage_outcomes (account_id, outcome, reason)
+       VALUES ($1, 'FAILED', $2)
+       ON CONFLICT (account_id) DO NOTHING`,
+      [accountId, kind],
+    );
+  }
+  if (!breachId) return;
+  await closeOpenPositions(client, trading, {
+    accountId,
+    userId: locked.user_id,
+    breachId,
+    overlay,
+  });
+  if (locked.state === 'ACTIVE') await markFailed(client, accountId, breachId);
+}
+
 function breachKind(equity: string, daily: string, drawdown: string): 'DAILY' | 'DRAWDOWN' | null {
   const dailyHit = stressedBreaches(equity, daily);
   const drawdownHit = stressedBreaches(equity, drawdown);
@@ -132,8 +170,8 @@ async function insertBreach(
   client: PoolClient,
   accountId: string,
   kind: string,
-  equity: string,
-  floor: string,
+  equity: string | null,
+  floor: string | null,
 ): Promise<string | null> {
   const inserted = await client.query<{ id: string }>(
     `INSERT INTO risk_breaches (account_id, kind, equity, floor)
