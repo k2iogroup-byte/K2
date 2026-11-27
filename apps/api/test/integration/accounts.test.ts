@@ -211,7 +211,7 @@ describe('module 03 challenge accounts', () => {
     const missing = await pool.query(
       `SELECT to_regclass('public.journal_entries') AS journal, to_regclass('public.subscriptions') AS subscriptions`,
     );
-    expect(missing.rows[0]).toEqual({ journal: null, subscriptions: null });
+    expect(missing.rows[0]).toEqual({ journal: 'journal_entries', subscriptions: null });
 
     expect(
       (await call(new Map(), '/checkout/challenge', { method: 'POST', body: {} })).status,

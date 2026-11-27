@@ -341,7 +341,14 @@ describe('database connectivity and migrations', () => {
       "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'conditional_orders'",
     );
     expect(kept.rowCount).toBe(1);
-    expect(await migrateUp(pool, directory)).toEqual(['0009', '0010', '0011', '0012', '0013', '0014']);
+    expect(await migrateUp(pool, directory)).toEqual([
+      '0009',
+      '0010',
+      '0011',
+      '0012',
+      '0013',
+      '0014',
+    ]);
   });
 
   it('rolls migration 0010 back and applies it again', async () => {
