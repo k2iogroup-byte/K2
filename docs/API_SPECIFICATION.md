@@ -14,7 +14,7 @@
 >
 > **Module 07 (implemented):** the ledger consumes `ledger_outbox` and does not add a public route. Reversal and freeze lift are internal functions. The contract is [MODULE_07_LEDGER.md](./MODULE_07_LEDGER.md).
 >
-> **Module 08 (sandbox):** challenge purchase and subscription collection go through a provider interface. Only the sandbox is implemented. `PAYMENT_PROVIDER=live` does not start. No card data is stored. The contract is [MODULE_08_PAYMENTS.md](./MODULE_08_PAYMENTS.md).
+> **Module 08 (implemented, sandbox):** challenge purchase and subscription collection go through a provider interface. Only the sandbox is implemented. `PAYMENT_PROVIDER=live` does not start. No card data is stored. The contract is [MODULE_08_PAYMENTS.md](./MODULE_08_PAYMENTS.md).
 
 ---
 

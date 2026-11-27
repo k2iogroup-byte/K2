@@ -1,6 +1,6 @@
 # Module 08 — Payments
 
-**Status:** Contract 2026-11-27. No real payment provider is selected. The only implementation is a sandbox. No card data is stored. No refund is implemented.
+**Status:** Implemented 2026-11-27 as a sandbox. No real payment provider is selected. No card data is stored. No refund is implemented.
 
 ## Provider
 

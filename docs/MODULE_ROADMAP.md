@@ -16,7 +16,7 @@
 | M-05 | Trading Engine (simulation execution; broker adapter later) | MVP (simulation) / Phase 3 (broker) | PROPOSED |
 | M-06 | Risk Management | MVP | IMPLEMENTED for Challenge simulation on 2026-11-27. See [MODULE_06_RISK.md](./MODULE_06_RISK.md). |
 | M-07 | Financial Ledger | MVP | IMPLEMENTED for the simulation journal on 2026-11-27. See [MODULE_07_LEDGER.md](./MODULE_07_LEDGER.md). |
-| M-08 | Payments and Subscriptions | MVP | Sandbox contract 2026-11-27. See [MODULE_08_PAYMENTS.md](./MODULE_08_PAYMENTS.md). |
+| M-08 | Payments and Subscriptions | MVP | IMPLEMENTED as a sandbox on 2026-11-27. See [MODULE_08_PAYMENTS.md](./MODULE_08_PAYMENTS.md). |
 | M-09 | Payouts | MVP | PROPOSED |
 | M-10 | KYC and Anti-Fraud | MVP (before first payout) | PROPOSED |
 | M-11 | Trader Dashboard and Terminal | MVP | PROPOSED |
