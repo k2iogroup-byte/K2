@@ -1,6 +1,23 @@
 # Module 05 — Trading engine
 
-**Status:** Phase 2 implemented on 2026-11-21. Not deployed. No live market data, no broker, and no approving risk authorizer.
+**Status:** COMPLETE on 2026-11-27 for simulated trading. Not deployed. Production fills stay off. Live execution waits for Module 06.
+
+The production risk authorizer still returns `REJECT` / `TEMPORARILY_UNAVAILABLE` for every buy. `EXECUTION_ENABLED=true` is accepted only when `APP_ENV=development`. There is no broker and no real-money execution. A test double may approve inside tests. The server process does not.
+
+## Completion — 2026-11-27
+
+Simulated Module 05 now covers crypto and the earlier equity rules.
+
+- Crypto settles 1 USDT as 1 USD. There is no float and no live FX conversion. Crypto buys do not use the equity session calendar. Equities with no calendar still reject with `CALENDAR_UNCOVERED`.
+- The opening commission is 0.5 percent on crypto buys. Closing commission stays zero.
+- Binance Spot `USDT` pairs are the crypto catalogue. There is no minimum-volume filter. Symbol status, base and quote assets, and the `PRICE_FILTER`, `LOT_SIZE`, and `NOTIONAL` or `MIN_NOTIONAL` values are stored in `instrument_exchange_filters`. Migrations stay additive.
+- Tests sync a recorded `exchangeInfo`. A live `GET /api/v3/exchangeInfo` exists and sends no API key. CI does not call it.
+- Crypto orders are checked against tick, step, minimum and maximum quantity, and minimum notional with integer decimal math.
+- Public Binance Spot book tickers can be read from a WebSocket when `MARKET_DATA_MODE=binance-public`. Default, test, and CI modes do not open that socket. Subscriptions are on demand, at most 1024 streams on a connection and 5 outbound messages a second. The socket reconnects on drop and before the 24-hour disconnect. Quotes enter the same `onQuote` path as fixture quotes.
+- One account has one open position per instrument. A second buy is `POSITION_ALREADY_OPEN`. Stop-loss and take-profit fire from `onQuote`. Closes of 25, 50, 75, and 100 percent are risk-reducing. A fresh quote fills at the bid. A stale quote waits for the next fresh bid. If the instrument has never had a quote, the close uses the average entry.
+- A replica that is waiting for the trading lock is healthy for the deploy check and does not trade. A lost lock is not healthy. Readiness accepts applied migrations that include every migration this build knows, because migrations are additive.
+
+Approved decisions A–N are unchanged. Scaling in stays rejected.
 
 ## Changelog — 2026-11-21
 

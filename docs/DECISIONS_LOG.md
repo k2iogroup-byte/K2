@@ -123,7 +123,21 @@ Source date for all Part A entries: founder brief as received for the documentat
 | P-019 | Buy Vercel Pro or Enterprise before creating a project. Hobby forbids commercial use. Buy a Railway plan with a custom domain and backups before any database that must be kept. Set spend caps on both. | K2 is a commercial product. The published trial is $5 for 30 days and then deletes stateful volumes. | D-077 | PROPOSED. Blocked on the purchase |
 | P-020 | Keep the market-data engine inside the one API replica until a listed trigger: more than one replica, a load test that shows fan-out delaying the API, a second consumer that needs the feed, or the first background job (worker only). Do not add Redis or Kafka before that trigger. | Requirement 7 forbids a permanent forced monolith. Splitting now has no measured need and was out of scope. | D-077 | PROPOSED as the trigger list. The split itself is not approved and was not done |
 
-## Part C — Change Procedure (PROPOSED)
+## Part C — Module 05 implementation record (not a new founder decision)
+
+Recorded 2026-11-27. Approved decisions A–N are unchanged. This is status, not a new rule.
+
+| Item | Record |
+|---|---|
+| M-05 simulation | COMPLETE for the simulated equity engine and Binance Spot USDT crypto. |
+| USDT | 1 USDT settles as 1 USD. Crypto buys skip the equity calendar. |
+| Catalogue | All Binance Spot USDT pairs. No minimum-volume filter. |
+| Commission | 0.5 percent on the crypto opening buy. Close stays zero. |
+| Scaling in | Still rejected (`POSITION_ALREADY_OPEN`). |
+| Production fills | Remain off. `EXECUTION_ENABLED` is allowed only when `APP_ENV=development`. |
+| Live execution | Waits for M-06. The server risk authorizer still rejects buys. No broker and no real-money path was added. |
+
+## Part D — Change Procedure (PROPOSED)
 
 1. Change request references the affected BR/D/P/OQ IDs.
 2. Impact analysis (ledger, risk, legal, customer communication).

@@ -8,7 +8,7 @@
 >
 > **Module 04 (implemented):** market-data normalisation, fixture feeds, bars, and feed health are implemented without a live vendor. The contract is [MODULE_04_MARKET_DATA.md](./MODULE_04_MARKET_DATA.md). The `/v1` rows below were not built.
 >
-> **Module 05 (implemented):** simulated long-only orders, positions, stop entries, stop-loss, take-profit, and percentage closes are implemented without a `/v1` prefix. The browser reaches them through `/k2-api/trading/...`. The contract is [MODULE_05_TRADING.md](./MODULE_05_TRADING.md). The `/v1` rows below were not built. The production risk authorizer still rejects every order.
+> **Module 05 (COMPLETE for simulation):** simulated long-only equity and crypto orders, positions, stop entries, stop-loss, take-profit, and percentage closes are implemented without a `/v1` prefix. The browser reaches them through `/k2-api/trading/...`. The contract is [MODULE_05_TRADING.md](./MODULE_05_TRADING.md). The `/v1` rows below were not built. Production fills stay off. The production risk authorizer still rejects every buy until Module 06.
 
 ---
 
@@ -167,3 +167,10 @@ Module 05 phase 2 extends the existing trading routes. No second copy of those r
 - A risk-reducing close (close percentage, stop-loss, take-profit, or a sell that does not exceed the open long) is never rejected because the equity calendar is closed or the feed is stale or disconnected. A buy still goes through the fail-closed authorizer.
 - A fresh quote fills that close at the bid. A stale or closed-market close is accepted and the quantity is reserved until the next fresh quote, which fills the whole reserved quantity at that bid (`DEFERRED_FRESH`). If the instrument has never had a quote, the close fills at the position's average entry (`ENTRY_FALLBACK`).
 - The client cannot supply the fill price.
+
+### 2026-11-27 — Module 05 simulation complete
+
+- Crypto USDT pairs from Binance Spot are synced from a recorded catalogue in tests and can be synced from the public `exchangeInfo` route. Orders use the stored tick, step, quantity bounds, and minimum notional.
+- 1 USDT is 1 USD. The 0.5 percent opening fee applies to a crypto buy that a test authorizer approves. The server authorizer still rejects that buy.
+- A public book-ticker socket exists only when `MARKET_DATA_MODE=binance-public`. It does not run in the default, test, or CI configuration.
+- Live broker execution is not part of this module. It waits for Module 06.

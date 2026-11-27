@@ -60,13 +60,14 @@
 - **Scope (MVP):** order management, simulation fill model (spread, liquidity, slippage, partial fills, sessions — CONFIRMED), positions.
 - **Scope (Phase 3):** Broker Execution Adapter for equities Real Accounts, reconciliation.
 - **Depends on:** M-04, M-06, M-07; broker selection (OQ-072) for Phase 3.
+- **Module 05 implementation status:** COMPLETE on 2026-11-27 for simulated crypto (Binance Spot USDT) and the equity simulation rules already in this repo. Production fills remain off (`EXECUTION_ENABLED` only when `APP_ENV=development`). The production risk authorizer still rejects buys. Live execution waits for M-06. The broker adapter is not started. See [MODULE_05_TRADING.md](./MODULE_05_TRADING.md).
 
 ### M-06 Risk Management
 - **Scope:** pre-trade checks, real-time equity and limit evaluation, breach detection, enforcement (forced close, lock), stage pass/fail, trading-day counting, warnings.
 - **Depends on:** M-04, M-05, M-07.
 - **Blocking questions:** OQ-001 (drawdown precision), OQ-002, OQ-030, OQ-040…OQ-045.
 - **Notes:** highest-risk module; requires a signed-off written specification with worked examples before implementation.
-- **Copy trading (CONFIRMED, not implemented):** for Challenge and Funded Simulation, copy trading is prohibited. A confirmed violation blocks the account with no warning step. Classification requires multiple independent signals (order sequence, entry and exit timing, instrument and direction, size and ratio, repeated patterns, IP or device or account relationships, coordinated activity). Similar trades alone are not proof. Evidence and the audit record must be kept. Detection of every case is not guaranteed. M-06 must consume account identity from M-03, order and fill records that M-05 does not yet store, and the market events M-04 already normalises (instrument, price, size, source and receive timestamps, sequence). This correction does not add an order table or a detector to M-02, M-03, or M-04.
+- **Copy trading (CONFIRMED, not implemented):** for Challenge and Funded Simulation, copy trading is prohibited. A confirmed violation blocks the account with no warning step. Classification requires multiple independent signals (order sequence, entry and exit timing, instrument and direction, size and ratio, repeated patterns, IP or device or account relationships, coordinated activity). Similar trades alone are not proof. Evidence and the audit record must be kept. Detection of every case is not guaranteed. M-06 must consume account identity from M-03, the order and fill records M-05 stores, and the market events M-04 already normalises (instrument, price, size, source and receive timestamps, sequence). This correction does not add a detector to M-02, M-03, or M-04.
 
 ### M-07 Financial Ledger
 - **Scope:** double-entry, append-only journal; simulated vs real books; projections for balances; reconciliation tooling.
