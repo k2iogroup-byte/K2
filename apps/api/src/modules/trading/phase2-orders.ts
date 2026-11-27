@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { canonicalDecimal, decimalGreaterThan, decimalLessThan } from '@k2/shared';
 import type { Pool, PoolClient } from 'pg';
 
+import { evaluateInstrumentBreach } from '../risk/breach.js';
 import { attachInstrumentProtection, fireProtection } from './protection.js';
 import { advanceTriggerCursor, triggerQuoteIsNew } from './quote-cursor.js';
 import type { TradingLock } from './singleton.js';
@@ -238,6 +239,7 @@ export class Phase2Orders {
     await this.fireEntryStops(instrumentId, quote);
     await attachInstrumentProtection(this.pool, instrumentId);
     await fireProtection(this.pool, this.trading, instrumentId, quote, this.fanout);
+    await evaluateInstrumentBreach(this.pool, this.trading, instrumentId, quote);
     await this.publishFills(instrumentId, quote.quoteUpdateId);
     await this.markQuoteProcessed(instrumentId, quote);
   }

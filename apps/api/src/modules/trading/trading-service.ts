@@ -15,6 +15,7 @@ import type { Pool, PoolClient } from 'pg';
 
 import { DEFAULT_STALE_AFTER_MS } from '../market-data/engine.js';
 import { filterViolation } from '../market-data/exchange-filters.js';
+import { settleAccount } from '../risk/breach.js';
 import { liquiditySource, type LiquidityTake, takeLiquidity } from './liquidity.js';
 import {
   ClosedEquityCalendar,
@@ -237,7 +238,11 @@ export class TradingService {
     });
   }
 
-  private async submitLocked(client: PoolClient, input: OrderInput): Promise<TradingOrderResult> {
+  private async submitLocked(
+    client: PoolClient,
+    input: OrderInput,
+    mode: 'standard' | 'breach' = 'standard',
+  ): Promise<TradingOrderResult> {
     const account = await client.query<{ state: string; initial_capital: string }>(
       `SELECT state, initial_capital::text
        FROM trading_accounts
@@ -265,7 +270,7 @@ export class TradingService {
     const tradable = instrument?.trading_status === 'TRADABLE';
     const haltedClose =
       instrument?.trading_status === 'HALTED' &&
-      this.isRiskReducingSell(input, locked.state, instrument);
+      this.isRiskReducingSell(input, locked.state, instrument, mode === 'breach');
     if (!instrument || (!tradable && !haltedClose)) {
       return this.persistReject(
         client,
@@ -276,7 +281,7 @@ export class TradingService {
       );
     }
 
-    if (this.isRiskReducingSell(input, locked.state, instrument)) {
+    if (this.isRiskReducingSell(input, locked.state, instrument, mode === 'breach')) {
       const position = await this.lockPosition(client, input.accountId, input.instrumentId);
       const positionReject = await this.positionRule(client, input, instrument, position);
       if (positionReject) {
@@ -310,7 +315,19 @@ export class TradingService {
       if (closeFilter) {
         return this.persistReject(client, input, locked.initial_capital, instrument, closeFilter);
       }
-      return this.riskReducingSell(client, input, locked.initial_capital, instrument, position);
+      return this.finish(
+        client,
+        input,
+        mode,
+        await this.riskReducingSell(
+          client,
+          input,
+          locked.initial_capital,
+          instrument,
+          position,
+          mode === 'breach',
+        ),
+      );
     }
 
     const reject = this.precheck(input, locked.state, instrument);
@@ -384,7 +401,34 @@ export class TradingService {
       );
     }
 
-    return this.accept(client, input, locked.initial_capital, instrument, position, decision);
+    return this.finish(
+      client,
+      input,
+      mode,
+      await this.accept(client, input, locked.initial_capital, instrument, position, decision),
+    );
+  }
+
+  /** Breach liquidation. Fills at the bid even when the feed is stale or the session is closed. */
+  forceClose(client: PoolClient, input: OrderInput): Promise<TradingOrderResult> {
+    return this.submitLocked(client, input, 'breach');
+  }
+
+  private async finish(
+    client: PoolClient,
+    input: OrderInput,
+    mode: 'standard' | 'breach',
+    result: TradingOrderResult,
+  ): Promise<TradingOrderResult> {
+    if (mode === 'standard' && result.rejectReason === null) {
+      await settleAccount(
+        client,
+        this,
+        input.accountId,
+        input.quote ? { instrumentId: input.instrumentId, bid: input.quote.bid } : undefined,
+      );
+    }
+    return result;
   }
 
   private async filterReject(
@@ -424,10 +468,16 @@ export class TradingService {
     );
   }
 
-  private isRiskReducingSell(input: OrderInput, state: string, instrument: InstrumentRow): boolean {
+  private isRiskReducingSell(
+    input: OrderInput,
+    state: string,
+    instrument: InstrumentRow,
+    allowFailed = false,
+  ): boolean {
+    const open = state === 'ACTIVE' || (allowFailed && state === 'FAILED');
     return (
       input.side === 'SELL' &&
-      state === 'ACTIVE' &&
+      open &&
       (instrument.trading_status === 'TRADABLE' || instrument.trading_status === 'HALTED') &&
       ((instrument.market === 'EQUITIES' && instrument.quote_asset === 'USD') ||
         (instrument.market === 'CRYPTO' && instrument.quote_asset === 'USDT'))
@@ -440,6 +490,7 @@ export class TradingService {
     initialCapital: string,
     instrument: InstrumentRow,
     position: PositionRow | null,
+    immediate = false,
   ): Promise<TradingOrderResult> {
     if (!position) {
       return this.persistReject(client, input, initialCapital, instrument, 'INSUFFICIENT_POSITION');
@@ -450,6 +501,9 @@ export class TradingService {
       reasonCode: 'RISK_REDUCING',
       mode: 'RISK_REDUCING',
     };
+    if (immediate && input.quote) {
+      return this.accept(client, input, initialCapital, instrument, position, decision, 'full');
+    }
     const stored = await client.query<{ feed_state: string; received_timestamp: Date }>(
       `SELECT feed_state, received_timestamp FROM quote_snapshots WHERE instrument_id = $1`,
       [input.instrumentId],

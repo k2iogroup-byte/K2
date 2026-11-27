@@ -73,6 +73,7 @@ export async function evaluatePretrade(
 export async function readAccountEquity(
   client: PoolClient,
   accountId: string,
+  overlay?: { instrumentId: string; bid: string },
 ): Promise<string | null> {
   const cash = await client.query<{ cash: string | null; initial_capital: string }>(
     `SELECT projections.cash::text AS cash, accounts.initial_capital::text AS initial_capital
@@ -84,13 +85,15 @@ export async function readAccountEquity(
   const row = cash.rows[0];
   if (!row) return null;
   const legs = await client.query<{
+    instrument_id: string;
     quantity: string;
     quantity_scale: number;
     price_scale: number;
     quote_asset: string | null;
     bid: string | null;
   }>(
-    `SELECT positions.quantity::text AS quantity, instruments.quantity_scale, instruments.price_scale,
+    `SELECT positions.instrument_id, positions.quantity::text AS quantity,
+            instruments.quantity_scale, instruments.price_scale,
             instruments.quote_asset, snapshots.bid::text AS bid
      FROM positions
      JOIN instruments ON instruments.id = positions.instrument_id
@@ -100,11 +103,12 @@ export async function readAccountEquity(
   );
   const equityLegs: EquityLeg[] = [];
   for (const leg of legs.rows) {
-    if (!leg.bid || !leg.quote_asset) return null;
+    const bid = overlay?.instrumentId === leg.instrument_id ? overlay.bid : leg.bid;
+    if (!bid || !leg.quote_asset) return null;
     equityLegs.push({
       quantity: leg.quantity,
       quantityScale: leg.quantity_scale,
-      bid: leg.bid,
+      bid,
       priceScale: leg.price_scale,
       quoteAsset: leg.quote_asset,
     });
