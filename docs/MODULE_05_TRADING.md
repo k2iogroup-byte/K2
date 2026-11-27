@@ -2,7 +2,7 @@
 
 **Status:** COMPLETE on 2026-11-27 for simulated trading. Not deployed. Production fills stay off. Live execution waits for Module 06.
 
-The production risk authorizer still returns `REJECT` / `TEMPORARILY_UNAVAILABLE` for every buy. `EXECUTION_ENABLED=true` is accepted only when `APP_ENV=development`. There is no broker and no real-money execution. A test double may approve inside tests. The server process does not.
+The running server uses the Module 06 risk engine. `EXECUTION_ENABLED=true` is accepted only when `APP_ENV=development`. There is no broker and no real-money execution. A missing database client still fails closed. Equities with no exchange calendar still reject with `CALENDAR_UNCOVERED` before the engine runs.
 
 ## Completion — 2026-11-27
 
@@ -23,7 +23,7 @@ Approved decisions A–N are unchanged. Scaling in stays rejected.
 
 Phase 2 adds conditional orders and position protection on top of the existing order service. Migrations `0001` through `0007` are unchanged. Migration `0008` only adds `conditional_orders`, `position_protection`, and a trigger that rejects a new buy while a pending entry stop exists.
 
-The production risk authorizer still returns `REJECT` with `TEMPORARILY_UNAVAILABLE`. Equities are rejected with `CALENDAR_UNCOVERED` before that authorizer runs, because no exchange calendar is configured. Test doubles may approve inside integration tests. The server process does not.
+The running server authorizes buys with the Module 06 engine. Equities are still rejected with `CALENDAR_UNCOVERED` before that engine runs, because no exchange calendar is configured. Crypto reaches the engine. Fills stay off unless `APP_ENV=development` and `EXECUTION_ENABLED=true`.
 
 Fills run only when `APP_ENV=development` and `EXECUTION_ENABLED=true`. `liveMarketData` stays false. Prices and profit are taken from the server quote, never from the client. The engine is long-only. There is no short, future, or option.
 

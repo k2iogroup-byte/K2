@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 
 import type { ExecutableQuote } from '../trading/trading-service.js';
 import { failAccount, type RiskCloser } from './breach.js';
+import { readAccountEquity, rememberEquityHigh } from './engine.js';
 
 const MONEY = 4;
 const DAY_MS = 86_400_000;
@@ -39,6 +40,27 @@ export async function evaluateProgress(
   }
   if (await timedOut(client, accountId, rules.limitDays, now)) {
     await failAccount(client, trading, accountId, 'TIMEOUT', overlay);
+  }
+}
+
+/** First equity mark of the UTC day. A trade can write it earlier; the timer does not own it. */
+export async function markDayEquity(pool: Pool): Promise<void> {
+  const accounts = await pool.query<{ id: string }>(
+    `SELECT id FROM trading_accounts WHERE state = 'ACTIVE'`,
+  );
+  for (const row of accounts.rows) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const equity = await readAccountEquity(client, row.id);
+      if (equity) await rememberEquityHigh(client, row.id, equity);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 

@@ -169,7 +169,7 @@ Module 05 phase 2 extends the existing trading routes. No second copy of those r
 - `/ws/trading` sends order, fill, position, and protection events only to sockets of the owning user.
 - Every write requires the session, the same origin and CSRF checks as the other trading routes, and an `Idempotency-Key`. The same key and body replay the first response. The same key with a different body is 409.
 - A pending buy stop counts as a working entry. Another buy on that instrument is `POSITION_ALREADY_OPEN`.
-- Fills still require `APP_ENV=development` and `EXECUTION_ENABLED=true`. The server risk authorizer is unchanged and still rejects buys.
+- Fills still require `APP_ENV=development` and `EXECUTION_ENABLED=true`. The server uses the Module 06 risk engine. A missing database client still rejects. Equities without an exchange calendar still reject with `CALENDAR_UNCOVERED`.
 
 ### 2026-11-21 — Phase 3
 

@@ -53,6 +53,32 @@ export async function evaluateInstrumentBreach(
   }
 }
 
+/** Quote retries stay. The lock holder also retries unresolved closes once a minute. */
+export async function retryForcedCloses(pool: Pool, trading: RiskCloser): Promise<void> {
+  const rows = await pool.query<{ account_id: string }>(
+    `SELECT DISTINCT breaches.account_id
+     FROM risk_close_attempts AS attempts
+     JOIN risk_breaches AS breaches ON breaches.id = attempts.breach_id
+     WHERE NOT EXISTS (
+       SELECT 1 FROM risk_close_resolutions AS resolutions
+       WHERE resolutions.attempt_id = attempts.id
+     )`,
+  );
+  for (const row of rows.rows) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await settleAccount(client, trading, row.account_id);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+}
+
 export async function settleAccount(
   client: PoolClient,
   trading: RiskCloser,

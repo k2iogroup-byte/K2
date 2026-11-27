@@ -1,6 +1,6 @@
 # Module 06 — Risk engine
 
-**Status:** Implemented on 2026-11-27 for the Challenge simulation. Not deployed. Production fills stay off. The server process still constructs `FailClosedRiskAuthorizer`, so an API buy is still rejected. Tests inject `RiskEngineAuthorizer`. There is no broker, no real money, and no Redis, Kafka, or new service.
+**Status:** Implemented on 2026-11-27 for the Challenge simulation. Not deployed. Production fills stay off. The running server uses `RiskEngineAuthorizer`. `FailClosedRiskAuthorizer` remains only when that engine has no database client. There is no broker, no real money, and no Redis, Kafka, or new service.
 
 ## Equity
 
@@ -55,4 +55,4 @@ Migration `0013` adds append-only tables: `risk_decisions`, `risk_day_marks`, `r
 
 ## Out of scope
 
-Hedging, copy-trading detection, news-trading limits, scaling in, payouts, shorts, futures, and options. The server authorizer stays fail-closed until a later switch. Real Account daily-loss value remains unresolved.
+Hedging, copy-trading detection, news-trading limits, scaling in, payouts, shorts, futures, and options. Equities still reject with `CALENDAR_UNCOVERED` until an exchange calendar exists. Real Account daily-loss value remains unresolved.

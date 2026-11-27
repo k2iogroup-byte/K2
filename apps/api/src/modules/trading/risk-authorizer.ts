@@ -28,7 +28,7 @@ export interface SessionCalendar {
   equitySessionOpen(at: Date): boolean;
 }
 
-/** Production authorizer. No approving adapter ships here. */
+/** Fallback when the risk engine has no database client. It does not approve. */
 export class FailClosedRiskAuthorizer implements RiskAuthorizer {
   authorize(): Promise<RiskDecision> {
     return Promise.resolve({

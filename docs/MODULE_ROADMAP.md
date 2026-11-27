@@ -60,7 +60,7 @@
 - **Scope (MVP):** order management, simulation fill model (spread, liquidity, slippage, partial fills, sessions — CONFIRMED), positions.
 - **Scope (Phase 3):** Broker Execution Adapter for equities Real Accounts, reconciliation.
 - **Depends on:** M-04, M-06, M-07; broker selection (OQ-072) for Phase 3.
-- **Module 05 implementation status:** COMPLETE on 2026-11-27 for simulated crypto (Binance Spot USDT) and the equity simulation rules already in this repo. Production fills remain off (`EXECUTION_ENABLED` only when `APP_ENV=development`). The production risk authorizer still rejects buys. Live execution waits for M-06. The broker adapter is not started. See [MODULE_05_TRADING.md](./MODULE_05_TRADING.md).
+- **Module 05 implementation status:** COMPLETE on 2026-11-27 for simulated crypto (Binance Spot USDT) and the equity simulation rules already in this repo. Production fills remain off (`EXECUTION_ENABLED` only when `APP_ENV=development`). The running server uses the Module 06 risk engine. Equities still need an exchange calendar. The broker adapter is not started. See [MODULE_05_TRADING.md](./MODULE_05_TRADING.md).
 
 ### M-06 Risk Management
 - **Scope:** pre-trade checks, real-time equity and limit evaluation, breach detection, enforcement (forced close, lock), stage pass/fail, trading-day counting, warnings.
