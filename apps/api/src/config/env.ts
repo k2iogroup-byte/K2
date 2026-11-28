@@ -51,6 +51,7 @@ export type AppConfig = {
   executionFillsEnabled: boolean;
   paymentProvider: PaymentProviderMode;
   kycProvider: KycProviderMode;
+  ledgerStaleOutboxSeconds: number;
 };
 
 /** 32 bytes of 0x01. Development only. Rejected in staging and production. */
@@ -142,6 +143,7 @@ export function loadConfig(env: Env): AppConfig {
   const executionFillsEnabled = readExecutionFills(env.EXECUTION_ENABLED, appEnv, issues);
   const paymentProvider = readPaymentProvider(env.PAYMENT_PROVIDER, issues);
   const kycProvider = readKycProvider(env.KYC_PROVIDER, issues);
+  const ledgerStaleOutboxSeconds = readStaleOutboxSeconds(env.LEDGER_STALE_OUTBOX_SECONDS, issues);
 
   if (appEnv && database && databaseSsl) {
     checkDatabasePolicy(appEnv, database.url, databaseSsl, issues);
@@ -167,7 +169,8 @@ export function loadConfig(env: Env): AppConfig {
     !trustProxy ||
     executionFillsEnabled === null ||
     !paymentProvider ||
-    !kycProvider
+    !kycProvider ||
+    ledgerStaleOutboxSeconds === null
   ) {
     throw new ConfigError(issues.length > 0 ? issues : [{ path: 'config', message: 'is invalid' }]);
   }
@@ -195,7 +198,23 @@ export function loadConfig(env: Env): AppConfig {
     executionFillsEnabled,
     paymentProvider,
     kycProvider,
+    ledgerStaleOutboxSeconds,
   };
+}
+
+/** Provisional default: 300 seconds, five maintenance cycles. */
+export const DEFAULT_STALE_OUTBOX_SECONDS = 300;
+
+function readStaleOutboxSeconds(raw: string | undefined, issues: ConfigIssue[]): number | null {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_STALE_OUTBOX_SECONDS;
+  if (!/^[1-9]\d{0,6}$/.test(raw.trim())) {
+    issues.push({
+      path: 'LEDGER_STALE_OUTBOX_SECONDS',
+      message: 'must be a positive integer number of seconds',
+    });
+    return null;
+  }
+  return Number(raw.trim());
 }
 
 function readPaymentProvider(

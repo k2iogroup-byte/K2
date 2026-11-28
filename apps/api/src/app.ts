@@ -167,7 +167,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       void retryForcedCloses(stagePool, trading).catch((error: unknown) => {
         app.log.error({ err: error }, 'forced close retry failed');
       });
-      void runLedgerMaintenance(stagePool).catch((error: unknown) => {
+      void runLedgerMaintenance(
+        stagePool,
+        new Date(),
+        options.config.ledgerStaleOutboxSeconds,
+      ).catch((error: unknown) => {
         app.log.error({ err: error }, 'ledger maintenance failed');
       });
     }, 60_000);

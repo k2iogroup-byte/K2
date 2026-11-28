@@ -145,7 +145,96 @@ describe('ledger reconciliation on postgres', () => {
     );
     expect(lifted.reasonCode).not.toBe('LEDGER_FROZEN');
   });
+
+  it('warns on half a cent and freezes that gap on the next cycle', async () => {
+    const ids = await makeAccount();
+    await pool.query(
+      `INSERT INTO simulation_cash_projections (account_id, cash) VALUES ($1, 10000)`,
+      [ids.accountId],
+    );
+    await pool.query(
+      `INSERT INTO journal_entries (
+         account_id, entry_type, amount, cash_effect, idempotency_key, actor_type
+       ) VALUES ($1, 'FILL', -0.0050, true, $2, 'SYSTEM')`,
+      [ids.accountId, `cent:${ids.accountId}`],
+    );
+    await reconcileLedger(pool);
+    const warned = await pool.query<{ event_type: string; severity: string }>(
+      `SELECT event_type, severity FROM ledger_anomaly_current WHERE account_id = $1`,
+      [ids.accountId],
+    );
+    expect(warned.rows).toEqual([{ event_type: 'OBSERVED', severity: 'WARNING' }]);
+    expect(await freezeCount(ids.accountId)).toBe(0);
+    await reconcileLedger(pool);
+    const escalated = await pool.query<{ event_type: string; severity: string }>(
+      `SELECT event_type, severity FROM ledger_anomaly_current WHERE account_id = $1`,
+      [ids.accountId],
+    );
+    expect(escalated.rows).toEqual([{ event_type: 'ESCALATED', severity: 'CRITICAL' }]);
+    expect(await freezeCount(ids.accountId)).toBe(1);
+  });
+
+  it('freezes a five dollar gap on the first cycle', async () => {
+    const ids = await makeAccount();
+    await pool.query(
+      `INSERT INTO simulation_cash_projections (account_id, cash) VALUES ($1, 10000)`,
+      [ids.accountId],
+    );
+    await pool.query(
+      `INSERT INTO journal_entries (
+         account_id, entry_type, amount, cash_effect, idempotency_key, actor_type
+       ) VALUES ($1, 'FILL', -5, true, $2, 'SYSTEM')`,
+      [ids.accountId, `five:${ids.accountId}`],
+    );
+    await reconcileLedger(pool);
+    const row = await pool.query<{ event_type: string; severity: string }>(
+      `SELECT event_type, severity FROM ledger_anomaly_current WHERE account_id = $1`,
+      [ids.accountId],
+    );
+    expect(row.rows).toEqual([{ event_type: 'OBSERVED', severity: 'CRITICAL' }]);
+    expect(await freezeCount(ids.accountId)).toBe(1);
+  });
+
+  it('warns once when an outbox row is older than the stale threshold', async () => {
+    const ids = await makeAccount();
+    const now = new Date('2026-11-28T12:00:00.000Z');
+    const old = new Date(now.getTime() - 301_000);
+    const young = new Date(now.getTime() - 10_000);
+    await pool.query(
+      `INSERT INTO ledger_outbox (event_type, idempotency_key, account_id, amount, created_at)
+       VALUES ('fill', $1, $2, 10, $3)`,
+      [`stale:${ids.accountId}`, ids.accountId, old],
+    );
+    await reconcileLedger(pool, { now, staleAfterSeconds: 300 });
+    await reconcileLedger(pool, { now, staleAfterSeconds: 300 });
+    const warnings = await pool.query(
+      `SELECT id FROM mismatch_events
+       WHERE account_id = $1 AND event_type = 'STALE_OUTBOX'`,
+      [ids.accountId],
+    );
+    expect(warnings.rowCount).toBe(1);
+    expect(await freezeCount(ids.accountId)).toBe(0);
+    const fresh = await makeAccount();
+    await pool.query(
+      `INSERT INTO ledger_outbox (event_type, idempotency_key, account_id, amount, created_at)
+       VALUES ('fill', $1, $2, 10, $3)`,
+      [`fresh:${fresh.accountId}`, fresh.accountId, young],
+    );
+    await reconcileLedger(pool, { now, staleAfterSeconds: 300 });
+    const none = await pool.query(
+      `SELECT id FROM mismatch_events WHERE account_id = $1 AND event_type = 'STALE_OUTBOX'`,
+      [fresh.accountId],
+    );
+    expect(none.rowCount).toBe(0);
+  });
 });
+
+async function freezeCount(accountId: string): Promise<number> {
+  const freezes = await pool.query(`SELECT id FROM ledger_freezes WHERE account_id = $1`, [
+    accountId,
+  ]);
+  return freezes.rowCount ?? 0;
+}
 
 function sell(ids: { accountId: string; userId: string; instrumentId: string }): OrderInput {
   const quote: ExecutableQuote = {

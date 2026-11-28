@@ -1,15 +1,29 @@
 import { decimalsEqual } from '@k2/shared';
 import type { Pool, PoolClient } from 'pg';
 
+import { DEFAULT_STALE_OUTBOX_SECONDS } from '../../config/env.js';
 import { ensureOpening, postedCash } from './drain.js';
-import { canonicalMoney, mismatchSeverity, type SeverityBands } from './money.js';
+import { absoluteMoneyDifference, canonicalMoney, founderCashSeverity } from './money.js';
 
 const MONEY = 4;
 
 export type ActorType = 'SYSTEM' | 'AI_AGENT' | 'SUPER_ADMIN';
 
+export type ReconcileOptions = {
+  now?: Date;
+  staleAfterSeconds?: number;
+};
+
+type CashEvent = {
+  event_type: string;
+  severity: string;
+};
+
 /** Compare posted cash with the simulation projection. Unposted outbox rows are skipped. */
-export async function reconcileLedger(pool: Pool, bands?: SeverityBands): Promise<number> {
+export async function reconcileLedger(pool: Pool, options: ReconcileOptions = {}): Promise<number> {
+  const now = options.now ?? new Date();
+  const staleAfterSeconds = options.staleAfterSeconds ?? DEFAULT_STALE_OUTBOX_SECONDS;
+  await noteStaleOutbox(pool, now, staleAfterSeconds);
   const accounts = await pool.query<{ account_id: string }>(
     `SELECT projections.account_id
      FROM simulation_cash_projections AS projections
@@ -22,7 +36,7 @@ export async function reconcileLedger(pool: Pool, bands?: SeverityBands): Promis
   );
   let mismatches = 0;
   for (const account of accounts.rows) {
-    if (await reconcileOne(pool, account.account_id, bands)) mismatches += 1;
+    if (await reconcileOne(pool, account.account_id)) mismatches += 1;
   }
   return mismatches;
 }
@@ -68,11 +82,38 @@ export async function liftLedgerFreeze(
   return true;
 }
 
-async function reconcileOne(
-  pool: Pool,
-  accountId: string,
-  bands?: SeverityBands,
-): Promise<boolean> {
+async function noteStaleOutbox(pool: Pool, now: Date, staleAfterSeconds: number): Promise<void> {
+  const cutoff = new Date(now.getTime() - staleAfterSeconds * 1000);
+  const stuck = await pool.query<{ id: string; account_id: string }>(
+    `SELECT id, account_id
+     FROM ledger_outbox
+     WHERE posted_at IS NULL
+       AND event_type IN ('fill', 'commission')
+       AND created_at <= $1`,
+    [cutoff],
+  );
+  if (stuck.rows.length === 0) return;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const row of stuck.rows) {
+      await client.query(
+        `INSERT INTO mismatch_events (account_id, outbox_id, severity, event_type, actor_type)
+         VALUES ($1, $2, 'WARNING', 'STALE_OUTBOX', 'SYSTEM')
+         ON CONFLICT (outbox_id) WHERE event_type = 'STALE_OUTBOX' DO NOTHING`,
+        [row.account_id, row.id],
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function reconcileOne(pool: Pool, accountId: string): Promise<boolean> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -94,25 +135,39 @@ async function reconcileOne(
     );
     const expected = canonicalMoney(projection.rows[0]?.cash ?? '0');
     const actual = await postedCash(client, accountId);
+    const open = await latestCashEvent(client, accountId);
     if (decimalsEqual(expected, actual, MONEY)) {
+      if (open && open.event_type !== 'RESOLVED') {
+        await insertCashEvent(client, accountId, 'RESOLVED', 'INFO', expected, actual);
+      }
       await client.query('COMMIT');
       return false;
     }
-    const severity = mismatchSeverity(expected, actual, bands);
-    const logged = await client.query<{ id: string }>(
-      `INSERT INTO mismatch_log (
-         account_id, expected_amount, actual_amount, severity, kind, source_module, actor_type
-       ) VALUES ($1, $2, $3, $4, 'CASH_MISMATCH', 'M07', 'SYSTEM')
-       RETURNING id`,
-      [accountId, expected, actual, severity],
-    );
-    const mismatchId = logged.rows[0]?.id;
-    if (mismatchId && !(await freezeIsActive(client, accountId))) {
-      await client.query(
-        `INSERT INTO ledger_freezes (account_id, mismatch_log_id, actor_type)
-         VALUES ($1, $2, 'SYSTEM')`,
-        [accountId, mismatchId],
+    const severity = founderCashSeverity(absoluteMoneyDifference(expected, actual));
+    if (severity === 'CRITICAL') {
+      if (open?.severity !== 'CRITICAL') {
+        const mismatchId = await insertCashEvent(
+          client,
+          accountId,
+          open?.event_type === 'OBSERVED' ? 'ESCALATED' : 'OBSERVED',
+          'CRITICAL',
+          expected,
+          actual,
+        );
+        await freezeAccount(client, accountId, mismatchId);
+      }
+    } else if (open?.event_type === 'OBSERVED' && open.severity === 'WARNING') {
+      const mismatchId = await insertCashEvent(
+        client,
+        accountId,
+        'ESCALATED',
+        'CRITICAL',
+        expected,
+        actual,
       );
+      await freezeAccount(client, accountId, mismatchId);
+    } else if (!open || open.event_type === 'RESOLVED') {
+      await insertCashEvent(client, accountId, 'OBSERVED', 'WARNING', expected, actual);
     }
     await client.query('COMMIT');
     return true;
@@ -122,4 +177,55 @@ async function reconcileOne(
   } finally {
     client.release();
   }
+}
+
+async function latestCashEvent(client: PoolClient, accountId: string): Promise<CashEvent | null> {
+  const row = await client.query<CashEvent>(
+    `SELECT event_type, severity
+     FROM mismatch_events
+     WHERE account_id = $1
+       AND event_type IN ('OBSERVED', 'ESCALATED', 'RESOLVED')
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`,
+    [accountId],
+  );
+  return row.rows[0] ?? null;
+}
+
+async function insertCashEvent(
+  client: PoolClient,
+  accountId: string,
+  eventType: 'OBSERVED' | 'ESCALATED' | 'RESOLVED',
+  severity: 'INFO' | 'WARNING' | 'CRITICAL',
+  expected: string,
+  actual: string,
+): Promise<string | undefined> {
+  await client.query(
+    `INSERT INTO mismatch_events (
+       account_id, expected_amount, actual_amount, severity, event_type, actor_type
+     ) VALUES ($1, $2, $3, $4, $5, 'SYSTEM')`,
+    [accountId, expected, actual, severity, eventType],
+  );
+  if (eventType === 'RESOLVED') return undefined;
+  const logged = await client.query<{ id: string }>(
+    `INSERT INTO mismatch_log (
+       account_id, expected_amount, actual_amount, severity, kind, source_module, actor_type
+     ) VALUES ($1, $2, $3, $4, 'CASH_MISMATCH', 'M07', 'SYSTEM')
+     RETURNING id`,
+    [accountId, expected, actual, severity],
+  );
+  return logged.rows[0]?.id;
+}
+
+async function freezeAccount(
+  client: PoolClient,
+  accountId: string,
+  mismatchId: string | undefined,
+): Promise<void> {
+  if (!mismatchId || (await freezeIsActive(client, accountId))) return;
+  await client.query(
+    `INSERT INTO ledger_freezes (account_id, mismatch_log_id, actor_type)
+     VALUES ($1, $2, 'SYSTEM')`,
+    [accountId, mismatchId],
+  );
 }

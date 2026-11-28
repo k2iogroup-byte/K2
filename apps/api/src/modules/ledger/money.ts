@@ -1,15 +1,31 @@
-import { addDecimals, canonicalDecimal, decimalGreaterThan, subtractDecimals } from '@k2/shared';
+import {
+  addDecimals,
+  canonicalDecimal,
+  decimalGreaterThan,
+  decimalLessThan,
+  subtractDecimals,
+} from '@k2/shared';
 
 const MONEY = 4;
 const ZERO = '0.0000';
 
 export type Severity = 'INFO' | 'WARNING' | 'CRITICAL';
 
-/** Optional absolute bands. Production passes none, so every mismatch is CRITICAL. */
+/** Optional absolute bands for a caller. Production cash uses founderCashSeverity. */
 export type SeverityBands = {
   warningAbs: string;
   criticalAbs: string;
 };
+
+/** Founder rule: a gap below one cent warns. One cent and above is critical. */
+export const FOUNDER_CRITICAL_GAP = '0.0100';
+
+export function founderCashSeverity(gap: string): 'WARNING' | 'CRITICAL' {
+  const absolute = absoluteMoneyDifference(gap, ZERO);
+  if (absolute === ZERO) return 'WARNING';
+  if (decimalLessThan(absolute, FOUNDER_CRITICAL_GAP, MONEY)) return 'WARNING';
+  return 'CRITICAL';
+}
 
 export function canonicalMoney(value: string): string {
   const trimmed = value.trim();

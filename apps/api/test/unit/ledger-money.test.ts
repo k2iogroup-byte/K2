@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   absoluteMoneyDifference,
   canonicalMoney,
+  founderCashSeverity,
   mismatchSeverity,
   negateMoney,
 } from '../../src/modules/ledger/money.js';
@@ -14,6 +15,12 @@ describe('ledger money', () => {
     expect(negateMoney('10.0000')).toBe('-10.0000');
     expect(negateMoney('-0.0500')).toBe('0.0500');
     expect(absoluteMoneyDifference('10000.0000', '9989.9500')).toBe('10.0500');
+  });
+
+  it('treats one cent as critical and a smaller gap as a warning', () => {
+    expect(founderCashSeverity('0.0050')).toBe('WARNING');
+    expect(founderCashSeverity('0.0100')).toBe('CRITICAL');
+    expect(founderCashSeverity('5.0000')).toBe('CRITICAL');
   });
 
   it('treats an exact mismatch as critical until bands are supplied', () => {

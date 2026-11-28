@@ -157,7 +157,8 @@ These are fail-closed defaults. They use no founder-chosen number. Each can be r
 | Topic | Provisional choice |
 |---|---|
 | Freeze lift | A reconciliation freeze stays until `liftLedgerFreeze` appends a lift row. Balances matching again does not lift it. |
-| Severity bands | No production threshold. Every exact cash mismatch is `CRITICAL`. Absolute warning and critical bounds can be passed by a caller later. They are not implied. |
+| Severity bands | Founder correction 2026-11-28. A gap below `0.0100` is `WARNING` and does not freeze. The next cycle escalates any remaining gap to `CRITICAL` and freezes. A gap of `0.0100` or more, including exactly one cent, is `CRITICAL` immediately. A freeze still lifts only through `liftLedgerFreeze`. |
+| Stuck outbox | Provisional, awaiting founder. An unposted fill or commission older than `LEDGER_STALE_OUTBOX_SECONDS` appends one `STALE_OUTBOX` warning and does not freeze. Unset configuration uses 300 seconds. |
 | Subscription accrual | Accrual runs only for `ACTIVE` accounts. `FAILED` and `PASSED` stop it. |
 | Subscription versus equity | Unchanged and already required: a subscription row does not change the cash sum or equity. |
 | Payments grace | Not implemented in Module 07. Module 08 writes an append-only human review when grace ends. There is no production day count. Unset configuration does not invent 3 or 7 days: the review row is written immediately. The account is not set to `FAILED` or `PAUSED`. |

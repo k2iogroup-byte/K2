@@ -27,13 +27,11 @@ A repeated outbox key inserts nothing. The insert uses `ON CONFLICT (idempotency
 
 Compare `simulation_cash_projections.cash` with the cash-journal sum. Both are scale 4. They must be exactly equal. Reserved cash is not part of the comparison.
 
-An account with an unposted `fill` or `commission` row is skipped for that pass. Draining lag is not a mismatch.
+An account with an unposted `fill` or `commission` row is skipped for that pass. Draining lag is not a mismatch. The maintenance cycle drains first, then reconciles. A row still unposted after `LEDGER_STALE_OUTBOX_SECONDS` (provisional default 300) appends one `STALE_OUTBOX` warning. It does not freeze. The same outbox id is not warned again.
 
-A mismatch appends `mismatch_log` and, if the account is not already frozen, `ledger_freezes`. The log is not deleted. `ledger_anomalies` is a view over that log for a later oversight reader. Columns: severity, timestamp, account_id, expected_amount, actual_amount, source module `M07`, kind `CASH_MISMATCH`, actor_type. No oversight service is built here.
+A cash gap below `0.0100` appends `OBSERVED` / `WARNING` and does not freeze. The next cycle escalates a gap that is still not zero to `ESCALATED` / `CRITICAL` and freezes. A gap of `0.0100` or more is `CRITICAL` and freezes on the first cycle. A gap that disappears appends `RESOLVED` and does not freeze. These rows are append-only in `mismatch_events`. `ledger_anomalies` remains the view over `mismatch_log`. `ledger_anomaly_current` is the view of the latest cash event per account.
 
-Severity values are `INFO`, `WARNING`, and `CRITICAL`. With no configured bands, every exact mismatch is `CRITICAL`. Numeric bands are not built into production. A caller may pass absolute warning and critical bounds; until a founder sets them, the timer passes none.
-
-A freeze rejects a new buy inside `RiskEngineAuthorizer`, in the same transaction, with `LEDGER_FROZEN`. Risk-reducing sells return before that authorizer, so a close, stop, or forced liquidation still runs. `trading-service.ts` is not edited. The server process still uses the fail-closed authorizer for ordinary API buys.
+A freeze rejects a new buy inside `RiskEngineAuthorizer`, in the same transaction, with `LEDGER_FROZEN`. Risk-reducing sells return before that authorizer, so a close, stop, or forced liquidation still runs. `trading-service.ts` is not edited.
 
 A freeze is lifted only by `liftLedgerFreeze`, which appends `ledger_freeze_lifts`. Matching balances do not lift it.
 
@@ -60,5 +58,5 @@ The lock holder runs drain, reconcile, and accrual every 60 seconds beside the M
 Recorded in the decisions log as provisional, awaiting the founder:
 
 - A freeze lifts only through `liftLedgerFreeze`.
-- Severity bands have no production numbers. Every exact mismatch is `CRITICAL`.
+- A stuck outbox warning uses `LEDGER_STALE_OUTBOX_SECONDS`, provisional default 300.
 - Accrual stops when the account is `FAILED` or `PASSED`.
