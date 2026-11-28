@@ -11,12 +11,12 @@
 - Fewer than 7 `risk_trading_days` fall inside that window.
 - Any position is `OPEN`.
 - Posted cash and the simulation cash projection differ, or a fill or commission is still unposted. The comparison uses the Module 07 sum.
-- Profit is posted cash minus `initial_capital`. The trader share is 70 percent, the company share is 20 percent, and the reserve is the remainder. The $50 minimum is applied to the trader share. That reading is provisional.
+- Distributable profit is posted cash minus `initial_capital` minus the gross of requests whose latest status is `APPROVED` or `PAID`. Each request counts once. `REJECTED` requests are not counted. A distributable amount of zero or less is `NO_NEW_PROFIT`. The 70/20/10 split uses that remainder. The $50 minimum is applied to the trader share. That reading is provisional. The drawdown floor stays 0.92 times `initial_capital`.
 - The user has no `VERIFIED` KYC event. This is applied to every request. The "first payout only" reading is provisional.
 
 ## Request and review
 
-`POST /payouts` creates a `PENDING` request or returns 400 with the reason. A system step moves it to `UNDER_REVIEW` and appends one `human_review_cases` row with subject `PAYOUT`. The queue lists those rows.
+`POST /payouts` locks the account row, rejects a second open request, then creates a `PENDING` request or returns 400 with the reason. A system step moves it to `UNDER_REVIEW` and appends one `human_review_cases` row with subject `PAYOUT`. The queue lists those rows.
 
 Approve and reject require the existing `ADMIN` role. Module 02 has no `SUPER_ADMIN` role, so this module does not add one. The audit actor is recorded as `SUPER_ADMIN`. Reject requires a non-empty reason.
 

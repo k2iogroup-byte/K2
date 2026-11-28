@@ -14,30 +14,31 @@ export async function requestPayout(
   accountId: string,
   now = new Date(),
 ): Promise<{ requestId: string; status: 'PENDING'; traderAmount: string }> {
-  const open = await pool.query(
-    `SELECT 1
-     FROM payout_requests AS requests
-     JOIN LATERAL (
-       SELECT status FROM payout_audit WHERE request_id = requests.id ORDER BY seq DESC LIMIT 1
-     ) AS latest ON true
-     WHERE requests.account_id = $1 AND latest.status IN ('PENDING', 'UNDER_REVIEW', 'APPROVED')
-     LIMIT 1`,
-    [accountId],
-  );
-  if ((open.rowCount ?? 0) > 0) throw new PayoutRejected('ALREADY_OPEN');
-  const decision = await isEligible(pool, accountId, now);
-  if (
-    !decision.eligible ||
-    !decision.grossProfit ||
-    !decision.traderAmount ||
-    !decision.companyAmount
-  ) {
-    throw new PayoutRejected(decision.reason ?? 'NOT_ELIGIBLE');
-  }
-  const reserve = decision.reserveAmount ?? '0.0000';
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SELECT id FROM trading_accounts WHERE id = $1 FOR UPDATE`, [accountId]);
+    const open = await client.query(
+      `SELECT 1
+       FROM payout_requests AS requests
+       JOIN LATERAL (
+         SELECT status FROM payout_audit WHERE request_id = requests.id ORDER BY seq DESC LIMIT 1
+       ) AS latest ON true
+       WHERE requests.account_id = $1 AND latest.status IN ('PENDING', 'UNDER_REVIEW', 'APPROVED')
+       LIMIT 1`,
+      [accountId],
+    );
+    if ((open.rowCount ?? 0) > 0) throw new PayoutRejected('ALREADY_OPEN');
+    const decision = await isEligible(pool, accountId, now);
+    if (
+      !decision.eligible ||
+      !decision.grossProfit ||
+      !decision.traderAmount ||
+      !decision.companyAmount
+    ) {
+      throw new PayoutRejected(decision.reason ?? 'NOT_ELIGIBLE');
+    }
+    const reserve = decision.reserveAmount ?? '0.0000';
     const created = await client.query<{ id: string }>(
       `INSERT INTO payout_requests (
          account_id, gross_profit, trader_amount, company_amount, reserve_amount, actor_type

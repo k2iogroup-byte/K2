@@ -14,6 +14,7 @@ import {
 } from '../../src/modules/payouts/requests.js';
 import { PayoutRejected } from '../../src/modules/payouts/requests.js';
 import { approvePayout, rejectPayout } from '../../src/modules/payouts/review.js';
+import { drawdownFloor } from '../../src/modules/risk/limits.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error('Set TEST_DATABASE_URL to a database whose name ends with _test');
@@ -75,6 +76,67 @@ describe('payout eligibility on postgres', () => {
     expect(cash.rows[0]?.cash).toBe('10100.0000');
   });
 
+  it('excludes profit that was already paid and leaves the drawdown base', async () => {
+    const ready = await readyAccount({
+      days: 21,
+      tradingDays: 7,
+      verified: true,
+      initial: '100000',
+      cash: '110000',
+      profit: '10000',
+    });
+    const created = await requestPayout(pool, ready.accountId, ready.now);
+    expect(created.traderAmount).toBe('7000.0000');
+    await queuePayoutReview(pool, created.requestId);
+    const adminId = await adminUser();
+    await approvePayout(pool, created.requestId, adminId);
+    const paidGross = await pool.query<{ gross: string }>(
+      `SELECT gross_profit::text AS gross FROM payout_requests WHERE id = $1`,
+      [created.requestId],
+    );
+    expect(paidGross.rows[0]?.gross).toBe('10000.0000');
+    const paidAt = await pool.query<{ created_at: Date }>(
+      `SELECT created_at FROM payout_audit WHERE request_id = $1 AND status = 'PAID'`,
+      [created.requestId],
+    );
+    const paid = paidAt.rows[0]?.created_at;
+    if (!paid) throw new Error('paid audit missing');
+    const later = new Date(paid.getTime() + 15 * 86_400_000);
+    const execution = await pool.query<{ id: string }>(
+      `SELECT id FROM executions WHERE account_id = $1 LIMIT 1`,
+      [ready.accountId],
+    );
+    for (let index = 0; index < 7; index += 1) {
+      const day = new Date(paid.getTime() + index * 86_400_000).toISOString().slice(0, 10);
+      await pool.query(
+        `INSERT INTO risk_trading_days (account_id, utc_date, first_execution_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (account_id, utc_date) DO NOTHING`,
+        [ready.accountId, day, execution.rows[0]?.id],
+      );
+    }
+    await expect(requestPayout(pool, ready.accountId, later)).rejects.toMatchObject({
+      reason: 'NO_NEW_PROFIT',
+    });
+    await pool.query(`UPDATE simulation_cash_projections SET cash = 115000 WHERE account_id = $1`, [
+      ready.accountId,
+    ]);
+    await pool.query(
+      `INSERT INTO journal_entries (
+         account_id, entry_type, amount, cash_effect, idempotency_key, actor_type
+       ) VALUES ($1, 'FILL', 5000, true, $2, 'SYSTEM')`,
+      [ready.accountId, `more:${ready.accountId}`],
+    );
+    const next = await requestPayout(pool, ready.accountId, later);
+    expect(next.traderAmount).toBe('3500.0000');
+    const capital = await pool.query<{ initial_capital: string }>(
+      `SELECT initial_capital::text FROM trading_accounts WHERE id = $1`,
+      [ready.accountId],
+    );
+    expect(capital.rows[0]?.initial_capital).toBe('100000.0000');
+    expect(drawdownFloor(capital.rows[0]?.initial_capital ?? '')).toBe('92000.0000');
+  });
+
   it('refuses a rejection without a reason', async () => {
     const ready = await readyAccount({ days: 21, tradingDays: 7, verified: true });
     const created = await requestPayout(pool, ready.accountId, ready.now);
@@ -92,7 +154,13 @@ async function readyAccount(input: {
   tradingDays: number;
   verified: boolean;
   openPosition?: boolean;
+  initial?: string;
+  cash?: string;
+  profit?: string;
 }): Promise<{ accountId: string; now: Date }> {
+  const initial = input.initial ?? '10000';
+  const cash = input.cash ?? '10100';
+  const profit = input.profit ?? '100';
   const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
   const user = await pool.query<{ id: string }>(
     `INSERT INTO users (email, email_verified_at) VALUES ($1, now()) RETURNING id`,
@@ -116,7 +184,7 @@ async function readyAccount(input: {
        user_id, account_type, stage, state, initial_capital, currency, product_id,
        price_version_id, rule_set_version_id, purchase_evidence_id, provisioned_at
      )
-     SELECT $1, 'CHALLENGE', 'STAGE_1', 'ACTIVE', 10000, 'USD', products.id,
+     SELECT $1, 'CHALLENGE', 'STAGE_1', 'ACTIVE', $3, 'USD', products.id,
             versions.id, rules.id, $2, now()
      FROM challenge_products AS products
      JOIN product_price_versions AS versions ON versions.product_id = products.id
@@ -124,7 +192,7 @@ async function readyAccount(input: {
      WHERE products.account_size = 10000
      LIMIT 1
      RETURNING id`,
-    [userId, evidence.rows[0]?.id],
+    [userId, evidence.rows[0]?.id, initial],
   );
   const accountId = account.rows[0]?.id;
   if (!accountId) throw new Error('account was not inserted');
@@ -133,15 +201,15 @@ async function readyAccount(input: {
     `INSERT INTO funded_activations (account_id, activated_at, actor_type) VALUES ($1, $2, 'SYSTEM')`,
     [accountId, funded],
   );
-  await pool.query(
-    `INSERT INTO simulation_cash_projections (account_id, cash) VALUES ($1, 10100)`,
-    [accountId],
-  );
+  await pool.query(`INSERT INTO simulation_cash_projections (account_id, cash) VALUES ($1, $2)`, [
+    accountId,
+    cash,
+  ]);
   await pool.query(
     `INSERT INTO journal_entries (account_id, entry_type, amount, cash_effect, idempotency_key, actor_type)
-     VALUES ($1, 'OPENING', 10000, true, $2, 'SYSTEM'),
-            ($1, 'FILL', 100, true, $3, 'SYSTEM')`,
-    [accountId, `opening:${accountId}`, `profit:${accountId}`],
+     VALUES ($1, 'OPENING', $2, true, $3, 'SYSTEM'),
+            ($1, 'FILL', $4, true, $5, 'SYSTEM')`,
+    [accountId, initial, `opening:${accountId}`, profit, `profit:${accountId}`],
   );
   const instrument = await pool.query<{ id: string }>(
     `INSERT INTO instruments (

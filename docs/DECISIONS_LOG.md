@@ -172,7 +172,7 @@ These are fail-closed defaults. They use no newly invented business number. Each
 | Funded source | Eligibility reads `funded_activations`. Nothing in Modules 06–09 inserts that row in production. No Stage 2 or Funded account is created. |
 | $50 minimum | Applied to the trader's 70 percent, not to gross profit. |
 | Later payout window | 15 calendar days from the last `PAID` payout, still with 7 trading days in that window. |
-| Cash after payout | Posted cash and the simulation projection stay as they are. The split is stored in `journal_supplements` with no cash effect. Reducing the balance would need a journal type migration 0014 cannot add without an alter, or an edit to Module 05 state. |
+| Cash after payout | Posted cash and the simulation projection stay as they are. The split is stored in `journal_supplements` with no cash effect. Reducing the balance would need a journal type migration 0014 cannot add without an alter, or an edit to Module 05 state. Already distributed profit is the sum of `gross_profit` on requests whose latest status is `APPROVED` or `PAID`. That sum is founder-approved. The cash balance itself is still not reduced. |
 | Review subject check | `human_review_items` stays payment-only. Payout and KYC use the new `human_review_cases` table. Payment grace writes both. |
 | Super admin | Module 02's `ADMIN` role is required. The stored actor is `SUPER_ADMIN`. No role was added. |
 | KYC gate | Every payout request requires `VERIFIED`. The "first payout only" reading is not assumed. |

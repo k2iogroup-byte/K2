@@ -84,8 +84,14 @@ export async function isEligible(
   );
   const cash = projection.rows[0]?.cash;
   if (!cash || canonicalMoney(cash) !== canonicalMoney(posted)) return blocked('LEDGER_UNMATCHED');
-  const profit = subtractDecimals(canonicalMoney(posted), canonicalMoney(gate.initial), SCALE);
-  if (profit.startsWith('-') || profit === '0.0000') return blocked('BELOW_MINIMUM');
+  const closedProfit = subtractDecimals(
+    canonicalMoney(posted),
+    canonicalMoney(gate.initial),
+    SCALE,
+  );
+  const paid = await cumulativePaidProfit(pool, accountId);
+  const profit = subtractDecimals(closedProfit, paid, SCALE);
+  if (profit.startsWith('-') || profit === '0.0000') return blocked('NO_NEW_PROFIT');
   const trader = multiplyDecimals(profit, TRADER_SHARE, SCALE, SCALE, SCALE);
   const company = multiplyDecimals(profit, COMPANY_SHARE, SCALE, SCALE, SCALE);
   const reserve = subtractDecimals(subtractDecimals(profit, trader, SCALE), company, SCALE);
@@ -145,6 +151,23 @@ async function loadGate(pool: Pool, accountId: string): Promise<Gate | null> {
     activatedAt: found.activated_at,
     lastPaidAt: found.last_paid_at,
   };
+}
+
+async function cumulativePaidProfit(pool: Pool, accountId: string): Promise<string> {
+  const row = await pool.query<{ total: string }>(
+    `SELECT COALESCE(SUM(requests.gross_profit), 0)::text AS total
+     FROM payout_requests AS requests
+     JOIN LATERAL (
+       SELECT status FROM payout_audit
+       WHERE request_id = requests.id
+       ORDER BY seq DESC
+       LIMIT 1
+     ) AS latest ON true
+     WHERE requests.account_id = $1
+       AND latest.status IN ('APPROVED', 'PAID')`,
+    [accountId],
+  );
+  return canonicalMoney(row.rows[0]?.total ?? '0');
 }
 
 function blocked(reason: string): Eligibility {
